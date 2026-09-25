@@ -1,0 +1,37 @@
+// SAMPLE DATA: made-up people so the public site works without real employee details.
+// For real names, run scripts/import_employees.py, which writes data/employees.local.js (git-ignored).
+window.EMPLOYEES_SAMPLE = true;
+window.EMPLOYEES = [
+  {"id": "e001", "name": "Aarav Mehta", "title": "Design", "cards": []},
+  {"id": "e002", "name": "Ananya Iyer", "title": "Finance", "cards": []},
+  {"id": "e003", "name": "Rohan Kapoor", "title": "Engineering", "cards": []},
+  {"id": "e004", "name": "Priya Nair", "title": "Data", "cards": []},
+  {"id": "e005", "name": "Kabir Malhotra", "title": "Product", "cards": []},
+  {"id": "e006", "name": "Isha Reddy", "title": "Data", "cards": []},
+  {"id": "e007", "name": "Vikram Joshi", "title": "People Ops", "cards": []},
+  {"id": "e008", "name": "Meera Pillai", "title": "Finance", "cards": []},
+  {"id": "e009", "name": "Arjun Rao", "title": "Finance", "cards": []},
+  {"id": "e010", "name": "Sneha Kulkarni", "title": "Design", "cards": []},
+  {"id": "e011", "name": "Aditya Bhat", "title": "People Ops", "cards": []},
+  {"id": "e012", "name": "Kavya Menon", "title": "Product", "cards": []},
+  {"id": "e013", "name": "Nikhil Verma", "title": "Finance", "cards": []},
+  {"id": "e014", "name": "Riya Choudhary", "title": "Engineering", "cards": []},
+  {"id": "e015", "name": "Siddharth Das", "title": "Marketing", "cards": []},
+  {"id": "e016", "name": "Tanvi Shah", "title": "People Ops", "cards": []},
+  {"id": "e017", "name": "Rahul Gupta", "title": "Marketing", "cards": []},
+  {"id": "e018", "name": "Neha Agarwal", "title": "Product", "cards": []},
+  {"id": "e019", "name": "Karthik Subramanian", "title": "Marketing", "cards": []},
+  {"id": "e020", "name": "Pooja Hegde", "title": "Finance", "cards": []},
+  {"id": "e021", "name": "Varun Saxena", "title": "Product", "cards": []},
+  {"id": "e022", "name": "Diya Banerjee", "title": "Product", "cards": []},
+  {"id": "e023", "name": "Manish Tiwari", "title": "Product", "cards": []},
+  {"id": "e024", "name": "Aditi Deshpande", "title": "Marketing", "cards": []},
+  {"id": "e025", "name": "Harsh Vardhan", "title": "Marketing", "cards": []},
+  {"id": "e026", "name": "Shreya Ghosh", "title": "People Ops", "cards": []},
+  {"id": "e027", "name": "Yash Patil", "title": "Engineering", "cards": []},
+  {"id": "e028", "name": "Nisha Krishnan", "title": "Data", "cards": []},
+  {"id": "e029", "name": "Dev Sharma", "title": "Finance", "cards": []},
+  {"id": "e030", "name": "Lavanya Murthy", "title": "Engineering", "cards": []},
+  {"id": "e031", "name": "Aniket Jain", "title": "People Ops", "cards": []},
+  {"id": "e032", "name": "Zoya Qureshi", "title": "Marketing", "cards": []}
+];

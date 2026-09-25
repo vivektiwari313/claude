@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Card Finder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!--APP-->
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <div>
+      <h1>Card Finder</h1>
+      <p class="sub">Find a GBL colleague who holds the credit card you need.</p>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button class="tab" role="tab" id="tab-cards" data-view="cards" aria-selected="true">Cards</button>
+    <button class="tab" role="tab" id="tab-people" data-view="people" aria-selected="false">People</button>
+    <button class="tab" role="tab" id="tab-requests" data-view="requests" aria-selected="false">My requests <span class="count-pill" id="req-count" hidden></span></button>
+  </nav>
+</header>
+
+<main>
+  <!-- Cards view -->
+  <section class="view" id="view-cards" data-view="cards">
+    <div class="split">
+      <div class="browser">
+        <div class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input id="card-search" type="search" placeholder="Search cards or banks, e.g. Infinia" autocomplete="off" aria-label="Search credit cards">
+        </div>
+        <div class="filters">
+          <label class="field">
+            <span>Bank</span>
+            <select id="issuer-filter"><option value="">All banks</option></select>
+          </label>
+          <label class="field">
+            <span>Category</span>
+            <select id="category-filter"><option value="">All categories</option></select>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="held-only" checked>
+            <span>Only cards someone at GBL has</span>
+          </label>
+        </div>
+        <p class="result-meta" id="result-meta" aria-live="polite"></p>
+        <ul class="card-list" id="card-list" role="listbox" aria-label="Credit cards"></ul>
+      </div>
+
+      <aside class="detail" id="card-detail" aria-live="polite"></aside>
+    </div>
+  </section>
+
+  <!-- People view -->
+  <section class="view" id="view-people" data-view="people" hidden>
+    <div class="people-head">
+      <div class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="people-search" type="search" placeholder="Search people or teams" autocomplete="off" aria-label="Search employees">
+      </div>
+      <label class="field">
+        <span>Sort</span>
+        <select id="people-sort">
+          <option value="cards">Most cards</option>
+          <option value="name">Name A–Z</option>
+        </select>
+      </label>
+    </div>
+    <p class="note" id="power-note"></p>
+    <div class="people-grid" id="people-grid"></div>
+  </section>
+
+  <!-- Requests view -->
+  <section class="view" id="view-requests" data-view="requests" hidden>
+    <div class="requests-head">
+      <h2>My requests</h2>
+      <p class="note">Requests are saved in this browser only. Copy the message and send it to your colleague on Slack.</p>
+    </div>
+    <ul class="req-list" id="req-list"></ul>
+  </section>
+</main>
+
+<footer class="foot">
+  <span id="foot-stats"></span>
+  <span>Employee names are sample data.</span>
+</footer>
+
+<!-- Request dialog -->
+<div class="scrim" id="scrim" hidden></div>
+<div class="dialog" id="request-dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title" hidden>
+  <form id="request-form">
+    <h2 id="dlg-title">Request card</h2>
+    <p class="dlg-sub" id="dlg-sub"></p>
+
+    <label class="field block">
+      <span>You are</span>
+      <select id="req-from" required></select>
+    </label>
+
+    <label class="field block">
+      <span>What do you need it for?</span>
+      <select id="req-purpose">
+        <option>Card offer or discount on a purchase</option>
+        <option>Airport lounge access</option>
+        <option>EMI or no-cost EMI</option>
+        <option>Referral to apply for this card</option>
+        <option>Advice before applying</option>
+        <option>Something else</option>
+      </select>
+    </label>
+
+    <label class="field block">
+      <span>Details (optional)</span>
+      <textarea id="req-note" rows="3" placeholder="e.g. 10% off on a laptop on Amazon, about ₹85,000"></textarea>
+    </label>
+
+    <div class="preview">
+      <div class="preview-label">Message</div>
+      <p id="req-preview"></p>
+    </div>
+
+    <div class="dlg-actions">
+      <button type="button" class="btn ghost" id="dlg-cancel">Cancel</button>
+      <button type="submit" class="btn primary">Send request</button>
+    </div>
+  </form>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+<!--/APP-->
+
+<script src="data/cards.js"></script>
+<script src="data/employees.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
