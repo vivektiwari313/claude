@@ -22,11 +22,12 @@ function loadUsers(file) {
   return new Map(users.map((u) => [u.id, u]));
 }
 
-// `picture` is the photo to show; `fallback` is the stored SVG, used when the photo is missing
-// or fails to load.
+// `picture` is the photo to show (stored copy first, then the avatar link); `fallback` is the
+// generated SVG, used when the photo is missing or fails to load.
 function publicUser(user) {
   const fallback = `/api/users/${user.id}/picture`;
-  return { id: user.id, name: user.name, picture: user.avatarUrl || fallback, fallback };
+  const picture = user.photo ? `/api/users/${user.id}/photo` : user.avatarUrl || fallback;
+  return { id: user.id, name: user.name, picture, fallback };
 }
 
 function searchUsers(users, rawQuery, limit = MAX_SUGGESTIONS) {
@@ -63,10 +64,16 @@ function createServer(users) {
       return sendJson(res, 200, searchUsers(users, url.searchParams.get('q') || ''));
     }
 
-    const match = pathname.match(/^\/api\/users\/(\d+)(\/picture)?$/);
+    const match = pathname.match(/^\/api\/users\/(\d+)(\/picture|\/photo)?$/);
     if (match) {
       const user = users.get(Number(match[1]));
       if (!user) return sendJson(res, 404, { error: 'User not found' });
+      if (match[2] === '/photo') {
+        const photo = user.photo && user.photo.match(/^data:(image\/[\w.+-]+);base64,(.+)$/);
+        if (!photo) return sendJson(res, 404, { error: 'No stored photo' });
+        res.writeHead(200, { 'Content-Type': photo[1], 'Cache-Control': 'public, max-age=86400' });
+        return res.end(Buffer.from(photo[2], 'base64'));
+      }
       if (match[2]) {
         res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
         return res.end(user.picture);

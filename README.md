@@ -30,14 +30,19 @@ There are no npm dependencies to install; `node server/index.js` works just as w
 
 ```sh
 node scripts/import-members.js path/to/members.json   # -> private/members.json
+node scripts/fetch-photos.js                          # download each avatar_url into it
 node scripts/build-standalone.js --members            # -> private/user-search.html
 node server/index.js                                  # server now serves the imported members
 ```
 
 The input is `{ "members": [...] }` or a plain array, where each member has a `name` and an
-optional `avatar_url`. Only the name and photo link are kept. Photos are loaded from their
-original URLs, so they need internet. Anyone with no photo, or whose photo can't load, gets a
-generated picture instead.
+optional `avatar_url`. Only the name and photo are kept.
+
+`fetch-photos.js` downloads each member's photo (the 512px version for Slack and Gravatar) and
+stores it, so the built file shows the real photos anywhere, offline included. Run it again to
+retry any that failed; re-importing keeps photos whose URL hasn't changed. Photos that weren't
+downloaded are loaded from their URL when the page opens. Anyone with no photo, or whose
+photo can't load, gets a generated picture instead.
 
 `private/` is git-ignored so real people's data stays out of the repository; share the built
 `private/user-search.html` file directly rather than committing it.
@@ -48,6 +53,7 @@ generated picture instead.
 | --- | --- |
 | `GET /api/users/search?q=<text>` | Up to 10 matches: `[{ id, name, picture, fallback }]` |
 | `GET /api/users/:id` | One user: `{ id, name, picture, fallback }` |
+| `GET /api/users/:id/photo` | The user's stored photo, when `fetch-photos.js` downloaded one |
 | `GET /api/users/:id/picture` | The user's generated picture (`image/svg+xml`), also used as the fallback |
 
 Search is case-insensitive. Names that start with the query come first, then names with a

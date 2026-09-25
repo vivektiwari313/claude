@@ -96,3 +96,44 @@ test('import-members keeps only name and https photo, with a fallback picture', 
   assert.equal(zed.picture, 'https://example.com/z.jpg');
   assert.equal(zed.fallback, `/api/users/${zed.id}/picture`);
 });
+
+test('sizedUrl asks Slack and Gravatar for 512px renditions', () => {
+  const { sizedUrl } = require('../scripts/fetch-photos');
+  assert.equal(sizedUrl('https://avatars.slack-edge.com/2025-01-01/1_ab_original.jpg'), 'https://avatars.slack-edge.com/2025-01-01/1_ab_512.jpg');
+  assert.equal(sizedUrl('https://secure.gravatar.com/avatar/x.jpg?d=a'), 'https://secure.gravatar.com/avatar/x.jpg?d=a&s=512');
+  assert.equal(sizedUrl('https://example.com/p.png'), 'https://example.com/p.png');
+});
+
+test('fetchPhotos stores images as data URIs and reports failures', async () => {
+  const http = require('node:http');
+  const { fetchPhotos } = require('../scripts/fetch-photos');
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  const photoServer = http.createServer((req, res) => {
+    if (req.url === '/ok.png') return res.writeHead(200, { 'Content-Type': 'image/png' }), res.end(png);
+    if (req.url === '/page.html') return res.writeHead(200, { 'Content-Type': 'text/html' }), res.end('<p>login</p>');
+    res.writeHead(404).end();
+  });
+  await new Promise((resolve) => photoServer.listen(0, resolve));
+  const host = `http://127.0.0.1:${photoServer.address().port}`;
+  const members = [
+    { name: 'Has Photo', avatarUrl: `${host}/ok.png` },
+    { name: 'Missing', avatarUrl: `${host}/gone.png` },
+    { name: 'Not Image', avatarUrl: `${host}/page.html` },
+    { name: 'No Url', avatarUrl: null },
+  ];
+  try {
+    const { attempted, failures } = await fetchPhotos(members, { log: () => {} });
+    assert.equal(attempted, 3);
+    assert.equal(members[0].photo, `data:image/png;base64,${png.toString('base64')}`);
+    assert.deepEqual(failures.map((f) => [f.name, f.error]).sort(), [['Missing', 'HTTP 404'], ['Not Image', 'not an image (text/html)']]);
+    assert.equal(members[1].photo, undefined);
+
+    // Stored photos win over links in both the API and the standalone build.
+    const { searchUsers } = require('../server/app');
+    const users = new Map(members.map((m, i) => [i + 1, { ...m, id: i + 1, picture: '<svg/>' }]));
+    assert.equal(searchUsers(users, 'has photo')[0].picture, '/api/users/1/photo');
+    assert.equal(searchUsers(users, 'missing')[0].picture, `${host}/gone.png`);
+  } finally {
+    photoServer.close();
+  }
+});

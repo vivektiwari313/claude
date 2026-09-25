@@ -53,6 +53,11 @@ if (require.main === module) {
     process.exit(1);
   }
   const members = buildMembers(JSON.parse(fs.readFileSync(source, 'utf8')));
+  // Keep photos already downloaded by fetch-photos.js for avatar URLs that haven't changed.
+  if (fs.existsSync(OUT_FILE)) {
+    const stored = new Map(JSON.parse(fs.readFileSync(OUT_FILE, 'utf8')).filter((m) => m.photo).map((m) => [m.avatarUrl, m.photo]));
+    for (const m of members) if (stored.has(m.avatarUrl)) m.photo = stored.get(m.avatarUrl);
+  }
   fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true });
   fs.writeFileSync(OUT_FILE, JSON.stringify(members, null, 1) + '\n');
   const withPhoto = members.filter((m) => m.avatarUrl).length;

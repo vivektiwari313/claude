@@ -4,8 +4,9 @@
 //   node scripts/build-standalone.js            sample users -> standalone/user-search.html
 //   node scripts/build-standalone.js --members  imported members -> private/user-search.html
 //
-// Member photos are linked, not embedded, so they need internet; anyone whose photo can't
-// load gets their generated picture instead.
+// Member photos stored by scripts/fetch-photos.js are embedded and work offline; any others
+// are linked from their avatar URL (needs internet). Anyone whose photo can't load gets their
+// generated picture instead.
 'use strict';
 
 const fs = require('node:fs');
@@ -32,7 +33,7 @@ function embeddedApi(dbFile) {
 (function () {
   const USERS = ${json}.map((u) => {
     const fallback = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(u.picture);
-    return { id: u.id, name: u.name, picture: u.avatarUrl || fallback, fallback };
+    return { id: u.id, name: u.name, picture: u.photo || u.avatarUrl || fallback, fallback };
   });
 
   window.UserApi = {
