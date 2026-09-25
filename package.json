@@ -1,0 +1,14 @@
+{
+  "name": "user-search",
+  "version": "1.0.0",
+  "description": "Searchable directory of 400 users with display pictures and weapon selection",
+  "private": true,
+  "scripts": {
+    "seed": "node scripts/seed.js",
+    "start": "node server/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

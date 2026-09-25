@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User Search</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="container">
+    <h1>Find a player</h1>
+
+    <div class="search" id="search">
+      <input
+        id="search-input"
+        type="search"
+        placeholder="Start typing a name…"
+        autocomplete="off"
+        spellcheck="false"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded="false"
+        aria-controls="suggestions"
+      >
+      <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+    </div>
+
+    <section id="profile" class="profile" hidden aria-live="polite">
+      <img id="profile-picture" class="profile-picture" alt="">
+      <h2 id="profile-name"></h2>
+      <div id="weapons" class="weapons" role="group" aria-label="Weapons"></div>
+      <p id="weapon-status" class="weapon-status"></p>
+    </section>
+
+    <p id="empty-state" class="empty-state">Search among 400 users and pick one to see their profile.</p>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
