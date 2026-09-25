@@ -4,9 +4,8 @@
 //   node scripts/import-members.js path/to/members.json
 //
 // Accepts either { "members": [...] } or a bare array; each member needs a "name" and may have
-// an "avatar_url" and a Slack user "id" (used only by the server, to DM people who get hit).
-// Nothing else is kept. private/ is git-ignored so real people's data never ends up in the
-// repository.
+// an "avatar_url". Only the name and picture link are kept. private/ is git-ignored so real
+// people's data never ends up in the repository.
 'use strict';
 
 const fs = require('node:fs');
@@ -19,10 +18,6 @@ function initials(name) {
   const words = name.split(/\s+/).filter(Boolean);
   const letters = words.length > 1 ? words[0][0] + words[words.length - 1][0] : words[0].slice(0, 2);
   return letters.toUpperCase().replace(/[^\p{L}\p{N}]/gu, '');
-}
-
-function slackUserId(id) {
-  return typeof id === 'string' && /^[UW][A-Z0-9]{2,}$/.test(id) ? id : null;
 }
 
 function safeAvatarUrl(url) {
@@ -39,18 +34,13 @@ function buildMembers(input) {
   if (!Array.isArray(list)) throw new Error('Expected an array of members or { "members": [...] }');
 
   return list
-    .map((m) => ({
-      name: typeof m.name === 'string' ? m.name.trim().replace(/\s+/g, ' ') : '',
-      avatarUrl: safeAvatarUrl(m.avatar_url),
-      slackId: slackUserId(m.id),
-    }))
+    .map((m) => ({ name: typeof m.name === 'string' ? m.name.trim().replace(/\s+/g, ' ') : '', avatarUrl: safeAvatarUrl(m.avatar_url) }))
     .filter((m) => m.name)
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((m, i) => ({
       id: i + 1,
       name: m.name,
       avatarUrl: m.avatarUrl,
-      slackId: m.slackId,
       // Shown when there is no avatar URL or the image fails to load (e.g. offline).
       picture: avatarSvg(prng(i + 1), initials(m.name)),
     }));

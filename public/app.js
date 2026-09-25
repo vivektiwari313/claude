@@ -45,7 +45,6 @@ window.WeaponFX.setup({
   permCanvas: document.getElementById('fx-perm'),
   tempCanvas: document.getElementById('fx-temp'),
   sprites: document.getElementById('fx-sprites'),
-  onHit: reportFirstHit,
 });
 
 let suggestions = [];
@@ -53,14 +52,6 @@ let activeIndex = -1;
 let debounceTimer;
 let requestSeq = 0;
 let selectedUser = null;
-let hitReported = false; // Whether the selected user's first hit has been reported yet.
-
-// The first hit after selecting someone may send them an anonymous Slack DM (server version).
-function reportFirstHit() {
-  if (hitReported || !selectedUser) return;
-  hitReported = true;
-  window.UserApi.hit(selectedUser.id).catch((err) => console.warn('Could not report the hit', err));
-}
 
 function escapeHtml(text) {
   return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -147,7 +138,6 @@ async function fetchSuggestions(query) {
 
 function selectUser(user) {
   selectedUser = user;
-  hitReported = false;
   input.value = user.name;
   closeSuggestions();
 

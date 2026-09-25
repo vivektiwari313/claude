@@ -1,6 +1,5 @@
 // Weapon effects on the profile picture: the weapon cursor, strike animations and the marks
-// they leave. app.js calls WeaponFX.setup() once, then setWeapon() and reset(). setup()'s
-// `onHit` is called on every strike.
+// they leave. app.js calls WeaponFX.setup() once, then setWeapon() and reset().
 //
 // Marks are drawn on two canvases over the photo, in a 260x260 logical space that is scaled
 // to the picture's real size: `perm` holds cracks and bullet holes (kept until reset), `temp`
@@ -97,7 +96,6 @@
   let groups = {}; // Chain saw and pen strokes.
   let activeDrag = null;
   let frameRequest = null;
-  let onHit = null;
 
   function newGroups() {
     return Object.fromEntries(DRAG_TOOLS.map((name) => [name, { strokes: [], drawing: false, releasedAt: 0 }]));
@@ -850,7 +848,6 @@
   function onPointerDown(e) {
     if (!weapon || e.button !== 0) return;
     e.preventDefault();
-    if (onHit) onHit(weapon.name);
     const p = toLogical(e);
     if (DRAG_TOOLS.includes(weapon.name)) return startDrag(e, p);
     if (weapon.name === 'Hammer') strikeHammer(p);
@@ -865,7 +862,6 @@
     stage = elements.stage;
     photo = elements.photo;
     spriteLayer = elements.sprites;
-    onHit = elements.onHit || null;
     permCtx = elements.permCanvas.getContext('2d');
     tempCtx = elements.tempCanvas.getContext('2d');
     bandCanvas = document.createElement('canvas');
