@@ -87,7 +87,7 @@ test('import-members keeps only name and https photo, with a fallback picture', 
     ['Ana Bell', null], ['Bad Link', null], ['Zed Quinn', 'https://example.com/z.jpg'],
   ]);
   for (const m of members) {
-    assert.deepEqual(Object.keys(m).sort(), ['avatarUrl', 'id', 'name', 'picture']);
+    assert.deepEqual(Object.keys(m).sort(), ['avatarUrl', 'id', 'name', 'picture', 'slackId']);
     assert.match(m.picture, /^<svg[\s\S]*<\/svg>$/);
   }
 
@@ -136,4 +136,110 @@ test('fetchPhotos stores images as data URIs and reports failures', async () => 
   } finally {
     photoServer.close();
   }
+});
+
+// A fake Slack Web API that records the DMs it was asked to send.
+async function fakeSlack() {
+  const http = require('node:http');
+  const sent = [];
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      const data = JSON.parse(body);
+      const auth = req.headers.authorization;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      if (auth !== 'Bearer xoxb-test') return res.end(JSON.stringify({ ok: false, error: 'invalid_auth' }));
+      if (req.url === '/conversations.open') {
+        if (data.users === 'UGONE') return res.end(JSON.stringify({ ok: false, error: 'user_not_found' }));
+        return res.end(JSON.stringify({ ok: true, channel: { id: `D-${data.users}` } }));
+      }
+      sent.push(data);
+      res.end(JSON.stringify({ ok: true }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, resolve));
+  return { sent, server, apiBase: `http://127.0.0.1:${server.address().port}` };
+}
+
+test('notifier DMs a colleague once a day per player, anonymously', async () => {
+  const { createNotifier, DAY_MS } = require('../server/slack');
+  const slack = await fakeSlack();
+  let clock = 1_000_000;
+  const notifier = createNotifier({ token: 'xoxb-test', apiBase: slack.apiBase, now: () => clock, maxPerColleaguePerDay: 2 });
+  try {
+    assert.deepEqual(await notifier.notifyHit('player-a', 'U1'), { sent: true });
+    assert.deepEqual(slack.sent, [{ channel: 'D-U1', text: 'Someone hit you at *Whack your colleague*' }]);
+
+    assert.equal((await notifier.notifyHit('player-a', 'U1')).reason, 'already_notified_today');
+    assert.equal((await notifier.notifyHit('player-b', 'U1')).sent, true); // Different player.
+    assert.equal((await notifier.notifyHit('player-c', 'U1')).reason, 'colleague_daily_limit');
+    assert.equal((await notifier.notifyHit('player-a', null)).reason, 'no_slack_account');
+
+    clock += DAY_MS;
+    assert.equal((await notifier.notifyHit('player-a', 'U1')).sent, true); // A day later.
+
+    // A failed send is not counted, so it can be retried.
+    assert.equal((await notifier.notifyHit('player-a', 'UGONE')).reason, 'slack_error');
+    assert.equal((await notifier.notifyHit('player-a', 'UGONE')).reason, 'slack_error');
+    assert.equal(slack.sent.length, 3);
+  } finally {
+    slack.server.close();
+  }
+  assert.equal((await createNotifier({}).notifyHit('p', 'U1')).reason, 'slack_not_configured');
+  const linked = createNotifier({ token: 't', appUrl: 'https://whack.example.com' });
+  assert.equal(linked.message(), 'Someone hit you at *<https://whack.example.com|Whack your colleague>*');
+});
+
+test('POST /api/users/:id/hit uses a player cookie and needs the hit header', async () => {
+  const { createNotifier } = require('../server/slack');
+  const slack = await fakeSlack();
+  const members = new Map([[1, { id: 1, name: 'Ana Bell', slackId: 'U1', picture: '<svg/>' }]]);
+  const notifier = createNotifier({ token: 'xoxb-test', apiBase: slack.apiBase });
+  const app = createServer(members, { notifier });
+  await new Promise((resolve) => app.listen(0, resolve));
+  const url = `http://127.0.0.1:${app.address().port}/api/users/1/hit`;
+  try {
+    assert.equal((await fetch(url, { method: 'POST' })).status, 403);
+    assert.equal((await fetch(url)).status, 405);
+
+    const first = await fetch(url, { method: 'POST', headers: { 'X-Whack-Hit': '1' } });
+    assert.deepEqual(await first.json(), { sent: true });
+    const cookie = first.headers.get('set-cookie').split(';')[0];
+    assert.match(cookie, /^player=[\w-]+$/);
+
+    const again = await fetch(url, { method: 'POST', headers: { 'X-Whack-Hit': '1', Cookie: cookie } });
+    assert.equal((await again.json()).reason, 'already_notified_today');
+    assert.equal(slack.sent.length, 1);
+
+    // The Slack ID never leaves the server.
+    const user = await (await fetch(url.replace('/hit', ''))).json();
+    assert.equal(JSON.stringify(user).includes('U1'), false);
+    assert.equal((await fetch(url.replace('/1/', '/99/'), { method: 'POST', headers: { 'X-Whack-Hit': '1' } })).status, 404);
+  } finally {
+    app.close();
+    slack.server.close();
+  }
+});
+
+test('import-members keeps valid Slack user IDs only', () => {
+  const { buildMembers } = require('../scripts/import-members');
+  const members = buildMembers([
+    { id: 'U0FAKE00001', name: 'A One' },
+    { id: 'bogus', name: 'B Two' },
+    { name: 'C Three' },
+  ]);
+  assert.deepEqual(members.map((m) => m.slackId), ['U0FAKE00001', null, null]);
+});
+
+test('standalone build leaves out Slack IDs', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { build } = require('../scripts/build-standalone');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'whack-')), 'members.json');
+  fs.writeFileSync(file, JSON.stringify([{ id: 1, name: 'Ana Bell', slackId: 'U0SECRET1', avatarUrl: null, picture: '<svg/>' }]));
+  const html = build(file);
+  assert.match(html, /Ana Bell/);
+  assert.doesNotMatch(html, /U0SECRET1/);
 });

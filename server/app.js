@@ -1,6 +1,7 @@
 // Zero-dependency HTTP backend: serves the user API and the static frontend.
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
@@ -51,10 +52,41 @@ function serveStatic(res, pathname) {
   });
 }
 
-function createServer(users) {
+// Players are anonymous; a random cookie tells them apart for the daily Slack limit.
+function playerId(req, res) {
+  const match = (req.headers.cookie || '').match(/(?:^|;\s*)player=([\w-]{16,64})/);
+  if (match) return match[1];
+  const id = crypto.randomUUID();
+  res.setHeader('Set-Cookie', `player=${id}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict`);
+  return id;
+}
+
+// POST /api/users/:id/hit: the player's first hit on this user; may send them a Slack DM.
+async function handleHit(req, res, users, notifier, id) {
+  // A custom header can't be sent cross-site without CORS approval, so other sites can't
+  // make a visitor's browser trigger DMs.
+  if (req.headers['x-whack-hit'] !== '1') return sendJson(res, 403, { error: 'Forbidden' });
+  const user = users.get(id);
+  if (!user) return sendJson(res, 404, { error: 'User not found' });
+  const player = playerId(req, res);
+  if (!notifier) return sendJson(res, 200, { sent: false, reason: 'slack_not_configured' });
+  return sendJson(res, 200, await notifier.notifyHit(player, user.slackId));
+}
+
+function createServer(users, { notifier } = {}) {
   return http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const { pathname } = url;
+
+    const hit = pathname.match(/^\/api\/users\/(\d+)\/hit$/);
+    if (hit) {
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
+      req.resume(); // No body is expected; drain whatever was sent.
+      return handleHit(req, res, users, notifier, Number(hit[1])).catch((err) => {
+        console.error(err);
+        sendJson(res, 500, { error: 'Internal error' });
+      });
+    }
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return sendJson(res, 405, { error: 'Method not allowed' });

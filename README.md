@@ -64,6 +64,31 @@ photo can't load, gets a generated picture instead.
 `private/` is git-ignored so real people's data stays out of the repository; share the built
 `private/user-search.html` file directly rather than committing it.
 
+## Slack: tell people when they get hit
+
+With the server version, the first hit after a player selects someone sends that person an
+anonymous Slack DM from a bot: "Someone hit you at *Whack your colleague*". Each player can
+notify the same colleague at most once a day (players are told apart by a cookie), and each
+colleague gets at most 10 of these DMs a day in total. The standalone file and hosted page
+can't send DMs: the bot token must stay on a server.
+
+1. Create the bot: go to <https://api.slack.com/apps>, choose **Create New App**, then **From a
+   manifest**, pick your workspace and paste `slack/app-manifest.json`. Install it to the
+   workspace (an admin may need to approve it).
+2. Copy the **Bot User OAuth Token** (`xoxb-...`) from **OAuth & Permissions**.
+3. Import members with their Slack user IDs (the `id` field in the member export), then start
+   the server with the token:
+
+   ```sh
+   node scripts/import-members.js path/to/members.json
+   SLACK_BOT_TOKEN=xoxb-... node server/index.js
+   ```
+
+Optional settings: `APP_URL` (links the app name in the DM to where you host it) and
+`SLACK_MAX_DMS_PER_COLLEAGUE_PER_DAY` (default 10). Who was notified when is kept in
+`private/hit-log.json`, so restarts don't reset the daily limit. Slack IDs never reach the
+browser.
+
 ## API
 
 | Endpoint | Description |
@@ -71,6 +96,7 @@ photo can't load, gets a generated picture instead.
 | `GET /api/users/search?q=<text>` | Up to 10 matches: `[{ id, name, picture, fallback }]` |
 | `GET /api/users/:id` | One user: `{ id, name, picture, fallback }` |
 | `GET /api/users/:id/photo` | The user's stored photo, when `fetch-photos.js` downloaded one |
+| `POST /api/users/:id/hit` | Reports a player's first hit on a user; may send them the Slack DM. Needs the header `X-Whack-Hit: 1`. |
 | `GET /api/users/:id/picture` | The user's generated picture (`image/svg+xml`), also used as the fallback |
 
 Search is case-insensitive. Names that start with the query come first, then names with a

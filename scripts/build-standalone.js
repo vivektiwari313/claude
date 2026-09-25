@@ -25,7 +25,8 @@ const read = (file) => fs.readFileSync(path.join(PUBLIC_DIR, file), 'utf8');
 const inlineSafe = (code) => code.replace(/<\/(script)/gi, '<\\/$1');
 
 function embeddedApi(dbFile) {
-  const users = JSON.parse(fs.readFileSync(dbFile, 'utf8'));
+  // Only what the page shows; Slack IDs and anything else stay server-side.
+  const users = JSON.parse(fs.readFileSync(dbFile, 'utf8')).map(({ id, name, picture, photo, avatarUrl }) => ({ id, name, picture, photo, avatarUrl }));
   const json = JSON.stringify(users).replace(/</g, '\\u003c');
   return `// Embedded "backend": the full user database, searched in the page.
 'use strict';
@@ -39,6 +40,10 @@ function embeddedApi(dbFile) {
   window.UserApi = {
     async search(query) {
       return rankUsers(USERS, query, 10);
+    },
+    // There is no server to send Slack messages from here.
+    async hit() {
+      return { sent: false, reason: 'no_server' };
     },
   };
 })();
