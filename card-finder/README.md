@@ -20,6 +20,12 @@ This is a **prototype**: the login is a dummy (search your name, password `12345
 
 **Power user**: the top 3 cardholders (ties included, minimum 3 cards) get a badge next to their name in holder lists. Change `POWER_USER_TOP_N` and `POWER_USER_MIN_CARDS` in `app.js` to adjust.
 
+## Hosting
+
+- **GitHub Pages:** `.github/workflows/card-finder-pages.yml` publishes the app on every push to `main` that touches `card-finder/`. Turn it on once: **Settings → Pages → Build and deployment → Source: GitHub Actions**. The site is public, so it ships the **sample** employee list only. Data stays in each visitor's browser, and Slack messages are previews, because Pages can't run `server.js` or the claude.ai Slack connector.
+- **claude.ai page:** the private artifact uses the real list and can send DMs through the viewer's Slack connector.
+- **Your own server:** `server.js` (below) gives shared data and bot DMs.
+
 ## Run it
 
 Quick look, no server: open `index.html` in a browser. Data stays in that browser and Slack messages show as previews.
@@ -77,8 +83,8 @@ If an image fails to load, the app falls back to the drawn card.
 | --- | --- |
 | `data/Indian_Credit_Card_Catalogue_v0_5.xlsx` | Source card catalogue |
 | `data/cards.js` | Generated from the xlsx. Don't edit by hand |
-| `data/random_channel_members.json` | Slack member export (357 people from #random) |
-| `data/employees.js` | Employees, generated from the Slack export. Everyone starts with no cards |
+| `data/employees.js` | **Sample** employees (made-up names). Committed and published |
+| `data/employees.local.js` | Real employees from the Slack export. **Git-ignored**, loads on top of the sample list when present |
 | `data/card-images.json` | Optional card images, keyed by card id (see *Card images*) |
 | `data/state.json` | Created by `server.js`: everyone's cards, requests and ratings. Not committed |
 
@@ -89,10 +95,10 @@ pip install openpyxl
 python3 scripts/import_cards.py data/Indian_Credit_Card_Catalogue_vX.xlsx
 ```
 
-Update employees from a Slack member export (keeps cards already entered for matching ids):
+Load the real employees from a Slack member export. It writes `data/employees.local.js` and keeps cards already entered for matching ids. This repository is public, so keep the export outside it and never commit the output:
 
 ```sh
-python3 scripts/import_employees.py random_channel_members.json
+python3 scripts/import_employees.py ~/Downloads/random_channel_members.json
 ```
 
 Each employee in `data/employees.js` looks like this. `cards` holds ids from `data/cards.js`:

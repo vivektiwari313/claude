@@ -29,7 +29,9 @@ function loadData(file, name) {
   if (!m) throw new Error(`Couldn't read ${file}`);
   return JSON.parse(m[1]);
 }
-const employees = new Map(loadData("employees.js", "EMPLOYEES").map((e) => [e.id, e]));
+// Real names (git-ignored) when present, else the sample list.
+const employeeFile = fs.existsSync(path.join(ROOT, "data", "employees.local.js")) ? "employees.local.js" : "employees.js";
+const employees = new Map(loadData(employeeFile, "EMPLOYEES").map((e) => [e.id, e]));
 const cards = new Map(loadData("cards.js", "CARD_CATALOGUE").map((c) => [c.id, c]));
 
 // ---------- shared state ----------
@@ -123,7 +125,7 @@ async function postToSlack(msg) {
 // ---------- HTTP ----------
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml" };
 // Only the app itself is served, never scripts or source data.
-const PUBLIC = [/^\/index\.html$/, /^\/app\.js$/, /^\/ops\.js$/, /^\/styles\.css$/, /^\/data\/(cards|employees)\.js$/, /^\/images\/cards\/[\w.-]+\.(png|jpe?g|webp|svg)$/];
+const PUBLIC = [/^\/index\.html$/, /^\/app\.js$/, /^\/ops\.js$/, /^\/styles\.css$/, /^\/data\/(cards|employees|employees\.local)\.js$/, /^\/images\/cards\/[\w.-]+\.(png|jpe?g|webp|svg)$/];
 
 function send(res, status, body, type = "application/json") {
   res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });

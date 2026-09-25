@@ -1090,6 +1090,7 @@
 
   // ---------- boot ----------
   fillFilters();
+  $("#sample-note").hidden = !window.EMPLOYEES_SAMPLE;
   bind();
   (async () => {
     await detectServer();
