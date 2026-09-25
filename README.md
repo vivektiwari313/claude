@@ -6,7 +6,7 @@ A small web app with a searchable directory of 400 users.
   `data/users.json`: 400 users, each with a unique name and an SVG display picture.
 - **Frontend** (`public/`): a search bar that shows live suggestions as you type. Pick a user
   to see their name and a large display picture, with six clickable circular weapon buttons
-  (Sword, Bow, Axe, Hammer, Spear, Dagger) below it.
+  (Hammer, Shoe, Egg, Chain Saw, Gun, Pen) below it.
 
 ## Quick start: no install needed
 

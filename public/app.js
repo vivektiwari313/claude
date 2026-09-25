@@ -2,28 +2,28 @@
 
 const WEAPONS = [
   {
-    name: 'Sword',
-    icon: '<path d="M20 3h1v1l-10 10-2-2z"/><path d="M5 13l6 6M7 15l-3 3M3 21l2-2" stroke-linecap="round"/>',
-  },
-  {
-    name: 'Bow',
-    icon: '<path d="M8 3c7 1 12 6 13 13"/><path d="M8 3l13 13" stroke-width="1"/><path d="M3 21L15 9M15 9h-3M15 9v3M3 21h3M3 21v-3" stroke-linecap="round"/>',
-  },
-  {
-    name: 'Axe',
-    icon: '<path d="M14 10L4 20" stroke-linecap="round"/><path d="M12 4c4-2 7 1 8 3s1 5-1 7c-2-1-3-2-4-3s-3-3-3-7z" fill="currentColor"/>',
-  },
-  {
     name: 'Hammer',
     icon: '<path d="M13 9L4 18l2 2 9-9" stroke-linejoin="round"/><rect x="11" y="3" width="10" height="6" rx="1" transform="rotate(45 16 6)" fill="currentColor"/>',
   },
   {
-    name: 'Spear',
-    icon: '<path d="M4 20L16 8" stroke-linecap="round"/><path d="M15 9l1-5 4-1-1 4z" fill="currentColor"/>',
+    name: 'Shoe',
+    icon: '<path d="M2 18V10.5h4.5l2 3 4 1 5.5 1.2c2.3.5 4 1.4 4 3.3v-.9V18z" stroke-linejoin="round"/><path d="M2 18h20M9.2 13.4l1.4-1.8M12 14.2l1.4-1.8" stroke-linecap="round"/>',
   },
   {
-    name: 'Dagger',
-    icon: '<path d="M17 4l3 0 0 3-7 7-3-3z" fill="currentColor"/><path d="M8 11l5 5M8 16l-4 4" stroke-linecap="round"/>',
+    name: 'Egg',
+    icon: '<path d="M12 2.5c-3.9 0-7 6-7 11.5a7 7 0 0 0 14 0c0-5.5-3.1-11.5-7-11.5z"/><path d="M9 10c.4-1.3 1.1-2.4 2-3.1" stroke-linecap="round" stroke-width="1.5"/>',
+  },
+  {
+    name: 'Chain Saw',
+    icon: '<rect x="10" y="10.5" width="12" height="5" rx="2.5"/><path d="M11.5 8.8h9" stroke-dasharray="1.5 1.5"/><path d="M2.5 9h7.5v8H3.5a1 1 0 0 1-1-1z" fill="currentColor" stroke-linejoin="round"/><path d="M4 9V6.5A1.5 1.5 0 0 1 5.5 5H9v4" stroke-linejoin="round"/>',
+  },
+  {
+    name: 'Gun',
+    icon: '<path d="M22 7H3v4.5h3L4 19.5h4.5l1.8-5.5H14v-2.5h8z" stroke-linejoin="round"/><path d="M10.3 14c.2 1.4 1.2 2.2 2.4 2.2.8 0 1.3-.5 1.3-1.2V14" stroke-linecap="round"/>',
+  },
+  {
+    name: 'Pen',
+    icon: '<path d="M16.5 3.5l4 4L8 20l-5 1 1-5z" stroke-linejoin="round"/><path d="M14 6l4 4M4 16l4 4" stroke-linecap="round"/>',
   },
 ];
 
@@ -136,7 +136,8 @@ function selectUser(user) {
   setPicture(profilePicture, user);
   profilePicture.alt = `${user.name}'s display picture`;
   renderWeapons();
-  weaponStatus.textContent = 'Choose a weapon.';
+  weaponStatus.textContent = NO_WEAPON_TEXT;
+  weaponStatus.classList.remove('is-selected');
   profile.hidden = false;
   emptyState.hidden = true;
 }
@@ -156,15 +157,15 @@ function renderWeapons() {
   });
 }
 
+const NO_WEAPON_TEXT = 'Select a weapon';
+
+// Clicking a weapon selects it; clicking the selected one again clears the selection.
 function onWeaponClick(btn, weapon) {
-  const wasEquipped = btn.getAttribute('aria-pressed') === 'true';
+  const wasSelected = btn.getAttribute('aria-pressed') === 'true';
   weaponsEl.querySelectorAll('.weapon').forEach((b) => b.setAttribute('aria-pressed', 'false'));
-  if (wasEquipped) {
-    weaponStatus.textContent = `${selectedUser.name} put away the ${weapon.name.toLowerCase()}.`;
-  } else {
-    btn.setAttribute('aria-pressed', 'true');
-    weaponStatus.textContent = `${selectedUser.name} equipped the ${weapon.name.toLowerCase()}!`;
-  }
+  if (!wasSelected) btn.setAttribute('aria-pressed', 'true');
+  weaponStatus.textContent = wasSelected ? NO_WEAPON_TEXT : weapon.name;
+  weaponStatus.classList.toggle('is-selected', !wasSelected);
 }
 
 input.addEventListener('input', () => {
