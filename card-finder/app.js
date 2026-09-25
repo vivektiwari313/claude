@@ -471,7 +471,9 @@
   }
   function renderSlackMode() {
     $("#foot-mode").textContent = !mode.shared
-      ? "Offline prototype: data is saved in this browser only. Slack messages are previews."
+      ? viaConnector()
+        ? "Prototype: data is saved in this browser only. Slack DMs are sent from your own Slack via the claude.ai connector."
+        : "Offline prototype: data is saved in this browser only. Slack messages are previews."
       : mode.slack
         ? "Shared with everyone at GBL. Requests are sent as Slack DMs."
         : "Shared with everyone at GBL. Slack isn't connected, so messages are previews.";
@@ -486,6 +488,141 @@
     ratelimited: "Slack is rate limiting, try again in a minute",
   };
   const slackError = (code) => SLACK_ERRORS[code] || code || "unknown error";
+
+  // ---------- Slack connector (claude.ai) ----------
+  // On claude.ai the page can post through the viewer's own Slack connector, so the DM comes
+  // from their Slack account. Used when there's no Card Finder server with a bot token.
+  const SLACK_SERVER = "Slack";
+  const SLACK_TOOL = "slack_send_message";
+  const APP_LINK = window.CARD_FINDER_URL || "";
+  let slackMcp = null;
+  async function detectConnector() {
+    try {
+      if (!window.claude || typeof window.claude.use !== "function") return;
+      slackMcp = await window.claude.use("mcp");
+    } catch { slackMcp = null; }
+    renderSlackMode();
+  }
+  const viaConnector = () => !!slackMcp && !mode.slack;
+
+  // What each failure means for the person, and whether trying the next recipient can help.
+  function connectorError(err) {
+    const code = err && err.code;
+    const map = {
+      server_not_connected: ["Add the Slack connector in claude.ai Settings → Connectors, then send again.", true],
+      needs_reauth: ["Your Slack connection has expired. Reconnect Slack in claude.ai Settings → Connectors, then send again.", true],
+      selection_required: ["You have more than one Slack connection. Choose one when claude.ai asks, then send again.", true],
+      not_in_manifest: ["Slack is turned off for this page. Allow Slack for Card Finder, then send again.", true],
+      consent_required: ["Allow Slack for Card Finder when claude.ai asks, then send again.", true],
+      blocked_by_policy: ["Your organization doesn't allow sending Slack messages from here.", true],
+      approval_required: ["Your organization needs to approve each Slack message, which pages can't do yet.", true],
+      not_granted: ["Slack isn't available on this page.", true],
+      capability_disabled: ["Slack isn't available on this page.", true],
+      capability_removed: ["Slack isn't available on this page.", true],
+      server_unavailable: ["Slack didn't answer. The message may still have gone out, so check Slack before sending again.", true],
+      upstream_error: ["Slack didn't answer. The message may still have gone out, so check Slack before sending again.", true],
+      cancelled: ["Sending was cancelled.", true],
+      tool_error: [`Slack refused it${err.message ? `: ${err.message}` : "."}`, false],
+    };
+    const [text, stop] = map[code] || [err?.message || "Something went wrong sending on Slack.", true];
+    return { text, stop };
+  }
+
+  // A permalink if the connector returns one; its result shape isn't documented, so look for any Slack URL.
+  function findLink(payload) {
+    const m = JSON.stringify(payload ?? "").match(/https:\/\/[\w.-]+\.slack\.com\/archives\/[^"\s\\]+/);
+    return m ? m[0] : "";
+  }
+
+  async function sendWithConnector(items) {
+    const results = [];
+    for (const item of items) {
+      try {
+        const res = await slackMcp.callTool(SLACK_SERVER, SLACK_TOOL, { channel_id: item.to, message: item.message });
+        results.push({ to: item.to, ok: true, link: findLink(res.payload ?? res.content) });
+      } catch (err) {
+        const { text, stop } = connectorError(err);
+        results.push({ to: item.to, ok: false, error: text });
+        if (stop) {
+          for (const rest of items.slice(results.length)) results.push({ to: rest.to, ok: false, error: "Not sent.", skipped: true });
+          break;
+        }
+      }
+    }
+    return results;
+  }
+
+  // Slack messages in standard markdown for the connector, one per recipient.
+  function connectorMessages(kind, req) {
+    const card = cardById.get(req.card);
+    const cardName = `${card.issuer} ${card.name}`;
+    const link = APP_LINK ? `\n<${APP_LINK}|Open Card Finder>` : "";
+    if (kind === "request") {
+      return req.to.map((id) => ({
+        to: id,
+        message: [
+          `Hi ${firstName(empById.get(id))}, I'm looking for someone with the **${cardName}** and saw on Card Finder that you have it.`,
+          `**Purpose:** ${req.purpose}`,
+          req.note ? `**Details:** ${req.note}` : "",
+          `Could you help? Reply here, or accept in Card Finder.${req.to.length > 1 ? ` I've asked ${req.to.length} people; the first to accept is matched.` : ""}${link}`,
+        ].filter(Boolean).join("\n"),
+      }));
+    }
+    if (kind === "accepted") {
+      return [{ to: req.from, message: `Hi ${firstName(empById.get(req.from))}, I can help with the **${cardName}** (${req.purpose.toLowerCase()}). Let's sort out the details here.${link}` }];
+    }
+    // done: the sender tells the helper
+    return [{ to: req.matchedWith, message: `Thanks for helping with the **${cardName}**, ${firstName(empById.get(req.matchedWith))}! I've marked it done in Card Finder. Please rate me there when you get a moment.${link}` }];
+  }
+
+  // Dialog step: preview the DM(s), then send from the viewer's Slack on click.
+  let pendingSlack = null; // { kind, req, items }
+  function offerConnector(kind, req) {
+    const items = connectorMessages(kind, req);
+    pendingSlack = { kind, req, items };
+    const names = items.map((i) => firstName(empById.get(i.to)));
+    const me = empById.get(db.me);
+    $("#slack-head").innerHTML = `${avatar(me)}<strong>${esc(me.name)}</strong><span class="app-tag">YOU</span>`;
+    $("#slack-text").textContent = items[0].message.replace(/\*\*/g, "").replace(/<([^|>]+)\|([^>]+)>/g, "$2: $1");
+    $("#slack-sub").textContent = items.length > 1 ? `One DM each to ${names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", ")}` : `DM to ${names[0]}`;
+    const status = $("#slack-status");
+    status.className = "slack-status";
+    status.textContent = "Sends from your own Slack account, using your Slack connector in claude.ai.";
+    $("#slack-results").hidden = true;
+    const send = $("#slack-send");
+    send.hidden = false;
+    send.disabled = false;
+    send.textContent = items.length > 1 ? `Send ${items.length} DMs on Slack` : "Send on Slack";
+    $("#slack-close").textContent = "Not now";
+  }
+
+  async function sendPendingSlack() {
+    if (!pendingSlack || !slackMcp) return;
+    const { items } = pendingSlack;
+    const send = $("#slack-send");
+    const status = $("#slack-status");
+    send.disabled = true;
+    send.textContent = "Sending…";
+    status.className = "slack-status";
+    status.textContent = `Sending to ${plural(items.length, "person", "people")}…`;
+    const results = await sendWithConnector(items);
+    const ok = results.filter((r) => r.ok);
+    const bad = results.filter((r) => !r.ok);
+    pendingSlack = null;
+    send.hidden = true;
+    $("#slack-close").textContent = "Done";
+    $("#slack-title").textContent = !bad.length ? "Sent on Slack" : ok.length ? "Partly sent on Slack" : "Not sent on Slack";
+    status.className = `slack-status ${bad.length ? "err" : "ok"}`;
+    status.textContent = !bad.length
+      ? `Sent from your Slack to ${ok.map((r) => firstName(empById.get(r.to))).join(", ")}.`
+      : bad.find((r) => !r.skipped)?.error || "Not sent.";
+    const list = $("#slack-results");
+    list.hidden = results.length < 2 && !ok.some((r) => r.link);
+    list.innerHTML = results.map((r) => {
+      const e = empById.get(r.to);
+      return `<li class="${r.ok ? "ok" : "err"}"><span>${r.ok ? "✓" : "✕"}</span> ${esc(e ? e.name : r.to)}${r.ok && r.link ? ` · <a href="${esc(r.link)}" target="_blank" rel="noopener">Open in Slack ↗</a>` : r.ok ? "" : ` · ${esc(r.skipped ? "not sent" : r.error)}`}</li>`;
+    }).join("");
+  }
 
   async function sendRequest() {
     const card = cardById.get(ui.selected);
@@ -502,7 +639,14 @@
     $("#slack-text").textContent = slackText(req, req.to.length === 1 ? empById.get(req.to[0]) : null);
     const status = $("#slack-status");
     status.className = "slack-status";
-    if (!out.slack) {
+    $("#slack-send").hidden = true;
+    $("#slack-results").hidden = true;
+    $("#slack-close").textContent = "Done";
+    $("#slack-head").innerHTML = `<span class="slack-bot">CF</span><strong>Card Finder</strong><span class="app-tag">APP</span>`;
+    if (!out.slack && viaConnector()) {
+      $("#slack-title").textContent = "Request saved. Send it on Slack?";
+      offerConnector("request", req);
+    } else if (!out.slack) {
       $("#slack-title").textContent = "Request sent";
       $("#slack-sub").textContent = `Slack DM to ${list}`;
       status.textContent = mode.shared
@@ -650,12 +794,16 @@
     const focusable = $(id).querySelector("button, textarea");
     if (focusable) focusable.focus();
   }
+  let afterRate = null;
   function closeDialog() {
     if (!openId) return;
+    const was = openId;
     $(openId).hidden = true;
     $("#scrim").hidden = true;
     openId = null;
     rating = null;
+    if (was === "#slack-dialog") pendingSlack = null;
+    if (was === "#rate-dialog" && afterRate) { const next = afterRate; afterRate = null; setTimeout(next, 0); }
   }
 
   let rating = null; // { req, side, stars }
@@ -818,6 +966,12 @@
         run("accept", { id: accept.dataset.accept }).then((out) => {
           if (!out) return;
           const from = firstName(empById.get(out.result.from));
+          if (!out.slack && viaConnector()) {
+            $("#slack-title").textContent = `Accepted. Tell ${from} on Slack?`;
+            offerConnector("accepted", out.result);
+            openDialog("#slack-dialog");
+            return;
+          }
           toast(out.slack && !out.slack.ok
             ? `Accepted, but the Slack note to ${from} failed (${slackError(out.slack.results[0]?.error || out.slack.error)}).`
             : `Accepted. You're matched with ${from}. Use the card together offline.`);
@@ -831,7 +985,16 @@
       }
       const done = t.closest("[data-done]");
       if (done) {
-        run("done", { id: done.dataset.done }).then((out) => out && openRate(out.result.id, "sender"));
+        run("done", { id: done.dataset.done }).then((out) => {
+          if (!out) return;
+          // Rate first; offer the Slack thank-you after the rating dialog closes.
+          if (!out.slack && viaConnector()) afterRate = () => {
+            $("#slack-title").textContent = `Let ${firstName(empById.get(out.result.matchedWith))} know on Slack?`;
+            offerConnector("done", out.result);
+            openDialog("#slack-dialog");
+          };
+          openRate(out.result.id, "sender");
+        });
         return;
       }
       const withdraw = t.closest("[data-withdraw]");
@@ -895,6 +1058,7 @@
     });
 
     $("#slack-copy").addEventListener("click", () => copyText($("#slack-text").textContent));
+    $("#slack-send").addEventListener("click", sendPendingSlack);
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDialog(); });
 
     // Two-step reset (the viewer can't show confirm() dialogs)
@@ -934,5 +1098,6 @@
     renderSlackMode();
     if (db.me) showApp(); else showLogin();
     if (mode.shared) startPolling();
+    detectConnector();
   })();
 })();

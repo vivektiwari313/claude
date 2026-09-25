@@ -51,6 +51,16 @@ The rules live in `ops.js`, which both the server and the offline page use. For 
 
 DMs arrive from the Card Finder app, addressed by Slack user id (the `id` in `data/employees.js`).
 
+### Slack connector (claude.ai)
+
+When Card Finder runs as a claude.ai artifact, it sends DMs through the viewer's own **Slack connector** instead of a bot. The DM comes from the viewer's Slack account.
+
+- After *Send request* (and after *Accept* or *Mark done*), the dialog previews the DM and sends only when you click **Send on Slack**. *Not now* sends nothing.
+- It calls the connector's `slack_send_message` tool with the colleague's Slack user id as `channel_id`, one DM per person.
+- If Slack isn't connected, has expired, or is blocked for the page, it stops and tells you how to fix it. If one person fails, the others still get their DM, and the dialog lists who did.
+- The page is published with the `mcp` capability for `Slack` / `slack_send_message` only. Each viewer is asked once to allow it.
+- When `server.js` runs with a bot token, the bot is used instead.
+
 ## Card images
 
 Cards show a drawn card until a real image is added. To add images:
@@ -98,5 +108,6 @@ Each employee in `data/employees.js` looks like this. `cards` holds ids from `da
 - `POST /api/op` has an origin check but no real authentication. Keep the server on the internal network.
 - Accept and decline happen in Card Finder, not with buttons inside Slack (those need a public URL for Slack's interactivity callbacks).
 - *Log in with Slack* is a dummy button.
+- With the Slack connector, the DM is sent from whoever is viewing the page, even if they logged in to Card Finder under another name.
 - Card images aren't included yet; see *Card images*.
 - Opened without the server, data stays in each browser and Slack messages are previews.

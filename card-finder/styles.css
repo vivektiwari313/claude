@@ -348,6 +348,12 @@ main { max-width: 1200px; margin: 0 auto; }
 }
 .slack-btn:hover { background: var(--surface-2); }
 .slack-btn svg { width: 20px; height: 20px; }
+.slack-head .avatar { width: 28px; height: 28px; border-radius: 6px; font-size: 11px; }
+.slack-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; max-height: 160px; overflow-y: auto; }
+.slack-results li.ok span { color: var(--ok); font-weight: 700; }
+.slack-results li.err { color: var(--danger); }
+.slack-results a { color: var(--accent); }
+.slack-send { display: inline-flex; align-items: center; gap: 8px; }
 .slack-status { margin: 0; font-size: 13px; color: var(--muted); }
 .slack-status.ok { color: var(--ok); }
 .slack-status.err { color: var(--danger); }
@@ -412,7 +418,7 @@ main { max-width: 1200px; margin: 0 auto; }
 .preview { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
 .preview-label { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
 .preview p { margin: 0; font-size: 14px; white-space: pre-wrap; }
-.dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dlg-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%); z-index: 12;
