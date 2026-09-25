@@ -16,118 +16,170 @@
     <span class="logo" aria-hidden="true"></span>
     <div>
       <h1>Card Finder</h1>
-      <p class="sub">Find a GBL colleague who holds the credit card you need.</p>
+      <p class="sub">Borrow a colleague's card benefit. Offer, lounge, EMI, referral.</p>
     </div>
   </div>
-  <nav class="tabs" role="tablist" aria-label="Views">
-    <button class="tab" role="tab" id="tab-cards" data-view="cards" aria-selected="true">Cards</button>
-    <button class="tab" role="tab" id="tab-people" data-view="people" aria-selected="false">People</button>
-    <button class="tab" role="tab" id="tab-requests" data-view="requests" aria-selected="false">My requests <span class="count-pill" id="req-count" hidden></span></button>
-  </nav>
+  <label class="whoami">
+    <span>You are</span>
+    <select id="me-select" aria-label="Choose who you are"></select>
+  </label>
 </header>
 
+<nav class="tabs" role="tablist" aria-label="Sections">
+  <button class="tab" role="tab" id="tab-request" data-view="request" aria-selected="true">Request a card</button>
+  <button class="tab" role="tab" id="tab-inbox" data-view="inbox" aria-selected="false">Inbox <span class="count-pill" id="inbox-count" hidden></span></button>
+  <button class="tab" role="tab" id="tab-sent" data-view="sent" aria-selected="false">Sent <span class="count-pill quiet" id="sent-count" hidden></span></button>
+  <button class="tab" role="tab" id="tab-mycards" data-view="mycards" aria-selected="false">My cards</button>
+  <button class="tab" role="tab" id="tab-people" data-view="people" aria-selected="false">People</button>
+</nav>
+
 <main>
-  <!-- Cards view -->
-  <section class="view" id="view-cards" data-view="cards">
+  <div class="banner" id="pick-me" hidden>
+    <strong>Pick your name to start.</strong> Choose it in <em>You are</em> at the top. There's no login in this prototype.
+  </div>
+
+  <!-- 1. Request a card (sender) -->
+  <section class="view" id="view-request" data-view="request">
     <div class="split">
       <div class="browser">
-        <div class="search">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          <input id="card-search" type="search" placeholder="Search cards or banks, e.g. Infinia" autocomplete="off" aria-label="Search credit cards">
+        <div class="step">
+          <h2 class="step-title"><span class="step-no">1</span>Purpose</h2>
+          <div class="purpose-chips" id="purpose-chips" role="radiogroup" aria-label="Purpose"></div>
         </div>
-        <div class="filters">
-          <label class="field">
-            <span>Bank</span>
-            <select id="issuer-filter"><option value="">All banks</option></select>
-          </label>
-          <label class="field">
-            <span>Category</span>
-            <select id="category-filter"><option value="">All categories</option></select>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" id="held-only" checked>
-            <span>Only cards someone at GBL has</span>
-          </label>
+
+        <div class="step">
+          <h2 class="step-title"><span class="step-no">2</span>Find the card</h2>
+          <div class="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <input id="card-search" type="search" placeholder="Search cards or banks, e.g. Infinia" autocomplete="off" aria-label="Search credit cards">
+          </div>
+          <div class="filters">
+            <label class="field">
+              <span>Bank</span>
+              <select id="issuer-filter"><option value="">All banks</option></select>
+            </label>
+            <label class="field">
+              <span>Category</span>
+              <select id="category-filter"><option value="">All categories</option></select>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="held-only">
+              <span>Only cards someone at GBL has</span>
+            </label>
+          </div>
+          <p class="result-meta" id="result-meta" aria-live="polite"></p>
+          <ul class="card-list" id="card-list" role="listbox" aria-label="Credit cards"></ul>
         </div>
-        <p class="result-meta" id="result-meta" aria-live="polite"></p>
-        <ul class="card-list" id="card-list" role="listbox" aria-label="Credit cards"></ul>
       </div>
 
       <aside class="detail" id="card-detail" aria-live="polite"></aside>
     </div>
   </section>
 
-  <!-- People view -->
+  <!-- 2. Inbox (receiver) -->
+  <section class="view" id="view-inbox" data-view="inbox" hidden>
+    <div class="view-head">
+      <h2>Inbox</h2>
+      <p class="note">Requests colleagues sent you. The first person to accept is matched, and then you use the card together offline.</p>
+    </div>
+    <ul class="req-list" id="inbox-list"></ul>
+  </section>
+
+  <!-- 3. Sent (sender) -->
+  <section class="view" id="view-sent" data-view="sent" hidden>
+    <div class="view-head">
+      <h2>Sent requests</h2>
+      <p class="note">Mark a request done once the card has been used, then rate your colleague.</p>
+    </div>
+    <ul class="req-list" id="sent-list"></ul>
+  </section>
+
+  <!-- 4. My cards (input) -->
+  <section class="view" id="view-mycards" data-view="mycards" hidden>
+    <div class="view-head">
+      <h2>My cards</h2>
+      <p class="note">Pick a bank, tick the cards you hold, and save. Come back any time to update.</p>
+    </div>
+    <div class="mycards">
+      <form class="entry" id="entry-form">
+        <label class="field block">
+          <span>Bank</span>
+          <select id="entry-bank"></select>
+        </label>
+        <fieldset class="checklist" id="entry-cards">
+          <legend class="section-label">Cards</legend>
+        </fieldset>
+        <div class="entry-actions">
+          <span class="note" id="entry-dirty"></span>
+          <button type="submit" class="btn primary" id="entry-save">Save</button>
+        </div>
+      </form>
+      <div class="owned">
+        <h3 class="section-label" id="owned-title">Your saved cards</h3>
+        <ul class="owned-list" id="owned-list"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. People -->
   <section class="view" id="view-people" data-view="people" hidden>
     <div class="people-head">
       <div class="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <input id="people-search" type="search" placeholder="Search people or teams" autocomplete="off" aria-label="Search employees">
+        <input id="people-search" type="search" placeholder="Search people" autocomplete="off" aria-label="Search employees">
       </div>
       <label class="field">
         <span>Sort</span>
         <select id="people-sort">
           <option value="cards">Most cards</option>
+          <option value="rating">Best rated</option>
           <option value="name">Name A–Z</option>
         </select>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="people-with-cards">
+        <span>Only people with cards</span>
       </label>
     </div>
     <p class="note" id="power-note"></p>
     <div class="people-grid" id="people-grid"></div>
   </section>
-
-  <!-- Requests view -->
-  <section class="view" id="view-requests" data-view="requests" hidden>
-    <div class="requests-head">
-      <h2>My requests</h2>
-      <p class="note">Requests are saved in this browser only. Copy the message and send it to your colleague on Slack.</p>
-    </div>
-    <ul class="req-list" id="req-list"></ul>
-  </section>
 </main>
 
 <footer class="foot">
   <span id="foot-stats"></span>
-  <span>Employee names are sample data.</span>
+  <span>Prototype: data is saved in this browser only. Slack messages are previews, not sent. <button class="linkish" id="reset-data">Reset data</button></span>
 </footer>
 
-<!-- Request dialog -->
+<!-- Dialogs -->
 <div class="scrim" id="scrim" hidden></div>
-<div class="dialog" id="request-dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title" hidden>
-  <form id="request-form">
-    <h2 id="dlg-title">Request card</h2>
-    <p class="dlg-sub" id="dlg-sub"></p>
 
+<div class="dialog" id="slack-dialog" role="dialog" aria-modal="true" aria-labelledby="slack-title" hidden>
+  <h2 id="slack-title">Request sent</h2>
+  <p class="dlg-sub" id="slack-sub"></p>
+  <div class="slack">
+    <div class="slack-head"><span class="slack-bot">CF</span><strong>Card Finder</strong><span class="app-tag">APP</span></div>
+    <p id="slack-text"></p>
+  </div>
+  <p class="note">Prototype: this is the Slack DM each colleague would get. Copy it to send it yourself.</p>
+  <div class="dlg-actions">
+    <button type="button" class="btn ghost" id="slack-copy">Copy message</button>
+    <button type="button" class="btn primary" data-close>Done</button>
+  </div>
+</div>
+
+<div class="dialog" id="rate-dialog" role="dialog" aria-modal="true" aria-labelledby="rate-title" hidden>
+  <form id="rate-form">
+    <h2 id="rate-title">Rate</h2>
+    <p class="dlg-sub" id="rate-sub"></p>
+    <div class="stars" id="stars" role="radiogroup" aria-label="Rating out of 5"></div>
     <label class="field block">
-      <span>You are</span>
-      <select id="req-from" required></select>
+      <span>Comment (optional)</span>
+      <textarea id="rate-comment" rows="2" placeholder="e.g. Quick to reply, card worked first time"></textarea>
     </label>
-
-    <label class="field block">
-      <span>What do you need it for?</span>
-      <select id="req-purpose">
-        <option>Card offer or discount on a purchase</option>
-        <option>Airport lounge access</option>
-        <option>EMI or no-cost EMI</option>
-        <option>Referral to apply for this card</option>
-        <option>Advice before applying</option>
-        <option>Something else</option>
-      </select>
-    </label>
-
-    <label class="field block">
-      <span>Details (optional)</span>
-      <textarea id="req-note" rows="3" placeholder="e.g. 10% off on a laptop on Amazon, about ₹85,000"></textarea>
-    </label>
-
-    <div class="preview">
-      <div class="preview-label">Message</div>
-      <p id="req-preview"></p>
-    </div>
-
     <div class="dlg-actions">
-      <button type="button" class="btn ghost" id="dlg-cancel">Cancel</button>
-      <button type="submit" class="btn primary">Send request</button>
+      <button type="button" class="btn ghost" data-close>Later</button>
+      <button type="submit" class="btn primary" id="rate-submit" disabled>Submit rating</button>
     </div>
   </form>
 </div>
