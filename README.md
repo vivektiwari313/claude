@@ -31,6 +31,7 @@ There are no npm dependencies to install; `node server/index.js` works just as w
 ```sh
 node scripts/import-members.js path/to/members.json   # -> private/members.json
 node scripts/fetch-photos.js                          # download each avatar_url into it
+python3 scripts/shrink-photos.py                      # optional, needs Pillow: shrink photos ~10x
 node scripts/build-standalone.js --members            # -> private/user-search.html
 node server/index.js                                  # server now serves the imported members
 ```
@@ -40,7 +41,9 @@ optional `avatar_url`. Only the name and photo are kept.
 
 `fetch-photos.js` downloads each member's photo (the 512px version for Slack and Gravatar) and
 stores it, so the built file shows the real photos anywhere, offline included. Run it again to
-retry any that failed; re-importing keeps photos whose URL hasn't changed. Photos that weren't
+retry any that failed; re-importing keeps photos whose URL hasn't changed. Slack's photos are
+often large, so `shrink-photos.py` re-encodes them as 320px JPEGs; for ~350 members that takes
+the file from about 90 MB to about 10 MB. Photos that weren't
 downloaded are loaded from their URL when the page opens. Anyone with no photo, or whose
 photo can't load, gets a generated picture instead.
 
