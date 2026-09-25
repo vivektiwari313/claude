@@ -39,6 +39,17 @@
 
     <p class="login-error" id="login-error" role="alert" hidden></p>
     <button type="submit" class="btn primary login-btn">Log in</button>
+
+    <div class="or"><span>or</span></div>
+    <button type="button" class="btn slack-btn" id="slack-login">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="#E01E5A" d="M5.04 15.17a2.53 2.53 0 1 1-2.52-2.53h2.52v2.53zm1.27 0a2.53 2.53 0 1 1 5.05 0v6.31a2.53 2.53 0 1 1-5.05 0v-6.31z"/>
+        <path fill="#36C5F0" d="M8.83 5.04a2.53 2.53 0 1 1 2.53-2.52v2.52H8.83zm0 1.27a2.53 2.53 0 1 1 0 5.05H2.52a2.53 2.53 0 1 1 0-5.05h6.31z"/>
+        <path fill="#2EB67D" d="M18.96 8.83a2.53 2.53 0 1 1 2.52 2.53h-2.52V8.83zm-1.27 0a2.53 2.53 0 1 1-5.05 0V2.52a2.53 2.53 0 1 1 5.05 0v6.31z"/>
+        <path fill="#ECB22E" d="M15.17 18.96a2.53 2.53 0 1 1-2.53 2.52v-2.52h2.53zm0-1.27a2.53 2.53 0 1 1 0-5.05h6.31a2.53 2.53 0 1 1 0 5.05h-6.31z"/>
+      </svg>
+      Log in with Slack
+    </button>
     <p class="note">Prototype login. Everyone shares one password for now.</p>
   </form>
 </section>
@@ -153,7 +164,7 @@
 
 <footer class="foot">
   <span id="foot-stats"></span>
-  <span>Prototype: data is saved in this browser only. Slack messages are previews, not sent. <button class="linkish" id="reset-data">Reset data</button></span>
+  <span><span id="foot-mode"></span> <button class="linkish" id="reset-data">Reset data</button></span>
 </footer>
 
 </div>
@@ -168,7 +179,7 @@
     <div class="slack-head"><span class="slack-bot">CF</span><strong>Card Finder</strong><span class="app-tag">APP</span></div>
     <p id="slack-text"></p>
   </div>
-  <p class="note">Prototype: this is the Slack DM each colleague would get. Copy it to send it yourself.</p>
+  <p class="slack-status" id="slack-status" role="status"></p>
   <div class="dlg-actions">
     <button type="button" class="btn ghost" id="slack-copy">Copy message</button>
     <button type="button" class="btn primary" data-close>Done</button>
@@ -196,6 +207,7 @@
 
 <script src="data/cards.js"></script>
 <script src="data/employees.js"></script>
+<script src="ops.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

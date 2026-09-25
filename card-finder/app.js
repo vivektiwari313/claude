@@ -5,17 +5,11 @@
   // as long as they hold at least POWER_USER_MIN_CARDS cards.
   const POWER_USER_TOP_N = 3;
   const POWER_USER_MIN_CARDS = 3;
-  const STORAGE_KEY = "cardfinder.v2";
+  const STORAGE_KEY = "cardfinder.v2"; // cards, requests and ratings when there's no server
+  const SESSION_KEY = "cardfinder.me";
   // Prototype login: everyone shares one password.
   const PASSWORD = "12345";
-  const PURPOSES = [
-    "Offer or discount on a purchase",
-    "Airport lounge access",
-    "EMI or no-cost EMI",
-    "Referral to apply",
-    "Advice before applying",
-    "Something else",
-  ];
+  const { PURPOSES, applyOp } = window.CardOps;
 
   const cards = window.CARD_CATALOGUE || [];
   const employees = (window.EMPLOYEES || []).slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -23,21 +17,78 @@
   const empById = new Map(employees.map((e) => [e.id, e]));
 
   // ---------- persisted state ----------
-  function load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch { /* storage unavailable */ }
-    return {};
-  }
-  const db = Object.assign({ me: "", holdings: {}, requests: [] }, load());
+  // Shared mode: server.js holds everyone's data and this page mirrors it.
+  // Local mode (opened as a file, no server): data lives in this browser's localStorage.
+  const mode = { shared: false, slack: false };
+  const read = (key) => {
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; }
+  };
+  const write = (key, value) => {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ }
+  };
+  const saved = read(STORAGE_KEY) || {};
+  const db = { me: read(SESSION_KEY) ?? saved.me ?? "", holdings: saved.holdings || {}, requests: saved.requests || [] };
   function save() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); } catch { /* storage unavailable */ }
+    write(SESSION_KEY, db.me);
+    if (!mode.shared) write(STORAGE_KEY, { holdings: db.holdings, requests: db.requests });
   }
-  // Drop anything saved for people who are no longer in the employee list (e.g. the old sample names).
-  if (db.me && !empById.has(db.me)) db.me = "";
-  for (const id of Object.keys(db.holdings)) if (!empById.has(id)) delete db.holdings[id];
-  db.requests = db.requests.filter((r) => empById.has(r.from) && r.to.some((id) => empById.has(id)));
+  function cleanUp() {
+    // Drop anything saved for people who are no longer in the employee list (e.g. the old sample names).
+    if (db.me && !empById.has(db.me)) db.me = "";
+    for (const id of Object.keys(db.holdings)) if (!empById.has(id)) delete db.holdings[id];
+    db.requests = db.requests.filter((r) => empById.has(r.from) && r.to.some((id) => empById.has(id)));
+  }
+  cleanUp();
+
+  const localCtx = {
+    employees: empById,
+    cards: cardById,
+    now: () => new Date().toISOString(),
+    newId: () => `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+  };
+
+  let lastShared = "";
+  function applyShared(state) {
+    const json = JSON.stringify(state);
+    if (json === lastShared) return false;
+    lastShared = json;
+    db.holdings = state.holdings || {};
+    db.requests = state.requests || [];
+    cleanUp();
+    return true;
+  }
+
+  // Every change goes through here, to the server in shared mode or applied locally otherwise.
+  async function run(op, args = {}) {
+    const payload = { op, args: { ...args, by: db.me } };
+    if (!mode.shared) {
+      try {
+        const out = applyOp(db, op, payload.args, localCtx);
+        save();
+        renderAll();
+        return { ok: true, result: out.result, slack: null };
+      } catch (err) {
+        toast(err.message);
+        renderAll();
+        return null;
+      }
+    }
+    let res, data;
+    try {
+      res = await fetch("api/op", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      data = await res.json();
+    } catch {
+      toast("Couldn't reach the Card Finder server. Check your connection and try again.");
+      return null;
+    }
+    if (data.state) applyShared(data.state);
+    renderAll();
+    if (!res.ok || !data.ok) {
+      toast(data.error || `Something went wrong (error ${res.status}).`);
+      return null;
+    }
+    return data;
+  }
 
   // ---------- derived data ----------
   const cardsOf = (empId) => (db.holdings[empId] ?? empById.get(empId)?.cards ?? []).filter((id) => cardById.has(id));
@@ -122,6 +173,9 @@
     const s = shortIssuer(c);
     return c.name.toLowerCase().includes(s.toLowerCase()) ? c.name : `${s} ${c.name}`;
   };
+  // Real card photo when the catalogue has one; the drawn card stays underneath as the fallback.
+  const cardImg = (c) => (c.image ? `<img class="card-photo" src="${esc(c.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "");
+  const mini = (c, cls = "mini") => `<span class="${cls}${c.image ? " has-photo" : ""}" style="--card-bg:${cardBg(c)}">${cardImg(c)}</span>`;
   const avatarBg = (e) => `hsl(${hashHue(e.name)} 42% 42%)`;
   const initials = (name) => name.split(/\s+/).filter(Boolean).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
   // Initials sit underneath; the Slack photo covers them when it loads and is removed if it fails.
@@ -203,6 +257,7 @@
 
   function loginError(msg, focus) {
     const el = $("#login-error");
+    el.classList.remove("info");
     el.textContent = msg;
     el.hidden = false;
     if (focus) $(focus).focus();
@@ -229,7 +284,8 @@
     ui.selected = null; ui.receivers = new Set(); ui.purpose = ""; ui.note = "";
     renderPurposes();
     resetDraft();
-    setView("request");
+    const hash = location.hash.slice(1);
+    setView(["request", "inbox", "sent", "mycards"].includes(hash) ? hash : "request");
     renderAll();
   }
 
@@ -280,7 +336,7 @@
     }
     ul.innerHTML = list.map(({ card, n }) => `
       <li class="card-row" role="option" tabindex="0" data-id="${esc(card.id)}" aria-selected="${ui.selected === card.id}">
-        <span class="mini" style="--card-bg:${cardBg(card)}"></span>
+        ${mini(card)}
         <span class="row-text">
           <span class="row-name">${highlight(card.name, terms)}</span>
           <span class="row-issuer">${highlight(card.issuer, terms)}</span>
@@ -316,7 +372,8 @@
 
     el.innerHTML = `
       <div class="detail-panel">
-        <div class="plastic" style="--card-bg:${cardBg(card)}">
+        <div class="plastic${card.image ? " has-photo" : ""}" style="--card-bg:${cardBg(card)}">
+          ${cardImg(card)}
           <div class="p-issuer">${esc(card.issuer)}</div>
           <div class="chip"></div>
           <div class="p-name">${esc(card.name)}</div>
@@ -375,22 +432,98 @@
       `Can you help? Accept or decline in Card Finder. The first person to accept is matched.`;
   }
 
-  function sendRequest() {
+  // ---------- server + Slack ----------
+  async function detectServer() {
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 3000);
+      const res = await fetch("api/config", { cache: "no-store", signal: ctl.signal });
+      clearTimeout(timer);
+      const cfg = res.ok ? await res.json() : {};
+      mode.shared = cfg.shared === true;
+      mode.slack = cfg.slack === true;
+    } catch { mode.shared = false; mode.slack = false; }
+    if (mode.shared) await refresh();
+  }
+  async function refresh() {
+    try {
+      const res = await fetch("api/state", { cache: "no-store" });
+      if (res.ok && applyShared(await res.json())) return true;
+    } catch { /* offline for a moment; try again next tick */ }
+    return false;
+  }
+  // Pick up colleagues' changes. Don't re-render while someone is typing or a dialog is open.
+  let pendingRender = false;
+  function busy() {
+    const a = document.activeElement;
+    return !!openId || (a && a.matches("textarea, input[type=text], input[type=search], input[type=password]"));
+  }
+  function startPolling() {
+    const tick = async () => {
+      if (!db.me || document.hidden) return;
+      if (await refresh()) { if (busy()) pendingRender = true; else renderAll(); }
+    };
+    setInterval(tick, 10000);
+    window.addEventListener("focus", tick);
+    document.addEventListener("focusout", () => setTimeout(() => {
+      if (pendingRender && !busy()) { pendingRender = false; renderAll(); }
+    }, 0));
+  }
+  function renderSlackMode() {
+    $("#foot-mode").textContent = !mode.shared
+      ? "Offline prototype: data is saved in this browser only. Slack messages are previews."
+      : mode.slack
+        ? "Shared with everyone at GBL. Requests are sent as Slack DMs."
+        : "Shared with everyone at GBL. Slack isn't connected, so messages are previews.";
+    $("#reset-data").hidden = mode.shared;
+  }
+  const SLACK_ERRORS = {
+    channel_not_found: "Slack couldn't find this person",
+    user_not_found: "Slack couldn't find this person",
+    not_in_channel: "the Slack app can't message this person",
+    invalid_auth: "the Slack token is invalid",
+    missing_scope: "the Slack app is missing the chat:write permission",
+    ratelimited: "Slack is rate limiting, try again in a minute",
+  };
+  const slackError = (code) => SLACK_ERRORS[code] || code || "unknown error";
+
+  async function sendRequest() {
     const card = cardById.get(ui.selected);
     if (!card || !db.me || !ui.purpose || !ui.receivers.size) return;
-    const req = {
-      id: `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-      from: db.me, card: card.id, purpose: ui.purpose, note: ui.note.trim(),
-      to: [...ui.receivers], declined: [], status: "open", matchedWith: null,
-      createdAt: new Date().toISOString(), ratings: {},
-    };
-    db.requests.push(req);
-    save();
+    const btn = $("#send-request");
+    if (btn) btn.disabled = true;
+    const out = await run("createRequest", { card: card.id, purpose: ui.purpose, note: ui.note, to: [...ui.receivers] });
+    if (!out) return;
+    const req = out.result;
     ui.note = "";
-    renderAll();
+    renderDetail();
     const names = req.to.map((id) => firstName(empById.get(id)));
-    $("#slack-sub").textContent = `Slack DM to ${names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", ")}`;
+    const list = names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", ");
     $("#slack-text").textContent = slackText(req, req.to.length === 1 ? empById.get(req.to[0]) : null);
+    const status = $("#slack-status");
+    status.className = "slack-status";
+    if (!out.slack) {
+      $("#slack-title").textContent = "Request sent";
+      $("#slack-sub").textContent = `Slack DM to ${list}`;
+      status.textContent = mode.shared
+        ? `${list} can see it in their Card Finder inbox. Slack isn't connected, so copy this message to ping them.`
+        : "Slack isn't connected here, so this is a preview. Copy it and send it yourself, or run Card Finder with its server to send it automatically.";
+    } else {
+      const sentTo = out.slack.results.filter((r) => r.ok).map((r) => firstName(empById.get(r.to)));
+      const failed = out.slack.results.filter((r) => !r.ok);
+      $("#slack-sub").textContent = `DM to ${list}`;
+      if (out.slack.ok) {
+        $("#slack-title").textContent = "Sent on Slack";
+        status.classList.add("ok");
+        status.textContent = `Delivered to ${sentTo.join(", ")}. They'll get a DM from the Card Finder app.`;
+      } else {
+        $("#slack-title").textContent = sentTo.length ? "Partly sent on Slack" : "Not sent on Slack";
+        status.classList.add("err");
+        status.textContent = failed.length
+          ? `${sentTo.length ? `Sent to ${sentTo.join(", ")}. ` : ""}Couldn't reach ${failed.map((r) => `${firstName(empById.get(r.to))} (${slackError(r.error)})`).join(", ")}. The request is still in their inbox; copy the message to ping them.`
+          : `Couldn't send: ${out.slack.error}. The request is still in their inbox; copy the message to ping them.`;
+      }
+    }
     openDialog("#slack-dialog");
   }
 
@@ -408,7 +541,7 @@
     if (!card) return "";
     return `
       <li class="req">
-        <span class="mini" style="--card-bg:${cardBg(card)}"></span>
+        ${mini(card)}
         <div class="req-body">
           <div class="req-title">${esc(shortLabel(card))}</div>
           <div class="req-meta">${esc(r.purpose)} · ${when(r.createdAt)}</div>
@@ -458,8 +591,9 @@
       if (r.status === "cancelled") return reqCard(r, `<span class="pill muted">Withdrawn</span> <span class="note-inline">Asked ${asked}</span>`, "");
       if (r.status === "open") {
         const left = r.to.length - r.declined.length;
+        const viaSlack = r.slack?.sentTo?.length ? ` · sent on Slack to ${r.slack.sentTo.length}` : "";
         const status = left
-          ? `<span class="pill wait">Waiting</span> <span class="note-inline">Asked ${asked}${r.declined.length ? ` · ${r.declined.length} declined` : ""}</span>`
+          ? `<span class="pill wait">Waiting</span> <span class="note-inline">Asked ${asked}${viaSlack}${r.declined.length ? ` · ${r.declined.length} declined` : ""}</span>`
           : `<span class="pill muted">Everyone declined</span> <span class="note-inline">Try another card or ask again later.</span>`;
         return reqCard(r, status, `${copy}<button class="btn ghost small" data-withdraw="${esc(r.id)}">Withdraw</button>`);
       }
@@ -490,7 +624,7 @@
     box.innerHTML = `<legend class="section-label">${esc(bank)} cards</legend>` + list.map((c) => `
       <label class="check">
         <input type="checkbox" data-own="${esc(c.id)}" ${draft.has(c.id) ? "checked" : ""}>
-        <span class="mini" style="--card-bg:${cardBg(c)}"></span>
+        ${mini(c)}
         <span>${esc(c.name)}<small>${esc(c.category)}</small></span>
       </label>`).join("");
     const dirty = db.me && isDirty();
@@ -502,7 +636,7 @@
       .sort((a, b) => a.issuer.localeCompare(b.issuer) || a.name.localeCompare(b.name));
     $("#owned-title").textContent = db.me ? `Your cards (${owned.length})` : "Your cards";
     $("#owned-list").innerHTML = owned.length ? owned.map((c) => `
-      <li><span class="mini" style="--card-bg:${cardBg(c)}"></span><span>${esc(shortLabel(c))}</span>
+      <li>${mini(c)}<span>${esc(shortLabel(c))}</span>
       <button type="button" class="icon-btn" data-unown="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">×</button></li>`).join("")
       : `<li class="empty-inline">No cards yet. Tick the ones you hold and save.</li>`;
   }
@@ -577,15 +711,6 @@
     $("#foot-stats").textContent = `${cards.length} cards from ${new Set(cards.map((c) => c.issuer)).size} issuers · ${employees.length} employees · ${holders} with cards`;
   }
 
-  function updateRequest(id, fn) {
-    const r = db.requests.find((x) => x.id === id);
-    if (!r) return null;
-    fn(r);
-    save();
-    renderAll();
-    return r;
-  }
-
   // ---------- events ----------
   function bind() {
     // Login
@@ -626,6 +751,10 @@
       save();
       showApp();
       toast(`Welcome, ${firstName(empById.get(db.me))}.`);
+    });
+    $("#slack-login").addEventListener("click", () => {
+      loginError("Slack sign-in isn't set up yet. Log in with your name and password for now.", "#login-name");
+      $("#login-error").classList.add("info");
     });
     $("#logout").addEventListener("click", () => {
       db.me = "";
@@ -686,28 +815,28 @@
       const t = e.target;
       const accept = t.closest("[data-accept]");
       if (accept) {
-        const r = db.requests.find((x) => x.id === accept.dataset.accept);
-        if (!r || r.status !== "open") { toast("Someone else already accepted this request."); renderAll(); return; }
-        updateRequest(r.id, (x) => { x.status = "matched"; x.matchedWith = db.me; x.matchedAt = new Date().toISOString(); });
-        toast(`Accepted. You're matched with ${firstName(empById.get(r.from))}. Use the card together offline.`);
+        run("accept", { id: accept.dataset.accept }).then((out) => {
+          if (!out) return;
+          const from = firstName(empById.get(out.result.from));
+          toast(out.slack && !out.slack.ok
+            ? `Accepted, but the Slack note to ${from} failed (${slackError(out.slack.results[0]?.error || out.slack.error)}).`
+            : `Accepted. You're matched with ${from}. Use the card together offline.`);
+        });
         return;
       }
       const decline = t.closest("[data-decline]");
       if (decline) {
-        updateRequest(decline.dataset.decline, (x) => { if (!x.declined.includes(db.me)) x.declined.push(db.me); });
-        toast("Declined.");
+        run("decline", { id: decline.dataset.decline }).then((out) => out && toast("Declined."));
         return;
       }
       const done = t.closest("[data-done]");
       if (done) {
-        const r = updateRequest(done.dataset.done, (x) => { x.status = "done"; x.doneAt = new Date().toISOString(); });
-        if (r) openRate(r.id, "sender");
+        run("done", { id: done.dataset.done }).then((out) => out && openRate(out.result.id, "sender"));
         return;
       }
       const withdraw = t.closest("[data-withdraw]");
       if (withdraw) {
-        updateRequest(withdraw.dataset.withdraw, (x) => { x.status = "cancelled"; });
-        toast("Request withdrawn.");
+        run("withdraw", { id: withdraw.dataset.withdraw }).then((out) => out && toast("Request withdrawn."));
         return;
       }
       const rate = t.closest("[data-rate]");
@@ -741,10 +870,12 @@
       e.preventDefault();
       if (!db.me) return;
       const had = cardsOf(db.me).length;
-      db.holdings[db.me] = [...draft];
-      save();
-      renderAll();
-      toast(had ? `Saved. You now have ${plural(draft.size, "card")}.` : `Saved ${plural(draft.size, "card")}. Colleagues can now find you.`);
+      run("setCards", { cards: [...draft] }).then((out) => {
+        if (!out) return;
+        resetDraft();
+        renderMyCards();
+        toast(had ? `Saved. You now have ${plural(draft.size, "card")}.` : `Saved ${plural(draft.size, "card")}. Colleagues can now find you.`);
+      });
     });
 
     // Rating
@@ -757,11 +888,10 @@
     $("#rate-form").addEventListener("submit", (e) => {
       e.preventDefault();
       if (!rating?.stars) return;
-      const { req, side, stars } = rating;
-      const key = side === "sender" ? "bySender" : "byReceiver";
-      updateRequest(req.id, (x) => { x.ratings[key] = { stars, comment: $("#rate-comment").value.trim(), at: new Date().toISOString() }; });
+      const { req, stars } = rating;
+      const comment = $("#rate-comment").value;
       closeDialog();
-      toast("Thanks. Your rating is saved.");
+      run("rate", { id: req.id, stars, comment }).then((out) => out && toast("Thanks. Your rating is saved."));
     });
 
     $("#slack-copy").addEventListener("click", () => copyText($("#slack-text").textContent));
@@ -788,12 +918,21 @@
 
   // A photo that fails to load (offline, blocked host) falls back to the initials underneath.
   document.addEventListener("error", (e) => {
-    if (e.target instanceof HTMLImageElement && e.target.parentElement?.classList.contains("avatar")) e.target.remove();
+    if (!(e.target instanceof HTMLImageElement)) return;
+    const box = e.target.parentElement;
+    if (box?.classList.contains("avatar")) e.target.remove();
+    if (box?.classList.contains("has-photo")) { e.target.remove(); box.classList.remove("has-photo"); }
   }, true);
 
   // ---------- boot ----------
   fillFilters();
   bind();
-  recompute();
-  if (db.me) showApp(); else showLogin();
+  (async () => {
+    await detectServer();
+    save();
+    recompute();
+    renderSlackMode();
+    if (db.me) showApp(); else showLogin();
+    if (mode.shared) startPolling();
+  })();
 })();

@@ -18,6 +18,8 @@ import openpyxl
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "data" / "cards.js"
+# Optional {card id: image path or URL}; see scripts/fetch_card_images.py.
+IMAGES = ROOT / "data" / "card-images.json"
 
 
 def slug(text):
@@ -35,6 +37,7 @@ def main(path):
     header = [clean(h) for h in next(rows)]
     col = {name: i for i, name in enumerate(header)}
 
+    images = json.loads(IMAGES.read_text(encoding="utf-8")) if IMAGES.exists() else {}
     cards, seen = [], set()
     for raw in rows:
         row = lambda key: raw[col[key]] if col[key] < len(raw) else None
@@ -66,6 +69,8 @@ def main(path):
             "url": clean(row("Official URL")),
             "status": clean(row("Status")),
         })
+        if images.get(card_id):
+            cards[-1]["image"] = images[card_id]
 
     source = Path(path).name
     body = json.dumps(cards, ensure_ascii=False, indent=1)
@@ -74,7 +79,8 @@ def main(path):
         f"window.CARD_CATALOGUE = {body};\n",
         encoding="utf-8",
     )
-    print(f"Wrote {len(cards)} cards to {OUT.relative_to(ROOT)}")
+    with_images = sum(1 for c in cards if c.get("image"))
+    print(f"Wrote {len(cards)} cards ({with_images} with images) to {OUT.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
