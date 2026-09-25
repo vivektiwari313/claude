@@ -13,13 +13,14 @@
     markLifetimeMs: 3000, // How long shoe prints and egg splats stay.
     strokeLingerMs: 3000, // How long chain saw and pen marks stay after the drag ends.
     fadeMs: 500, // Temporary marks fade out over the last part of their lifetime.
-    shotgunPellets: 11,
-    shotgunSpread: 24, // Radius of the pellet pattern, in logical px.
+    shotgunPellets: 9,
+    shotgunSpread: 34, // Radius of the pellet pattern, in logical px.
   };
 
   const SIZE = 260;
   const DRAG_TOOLS = ['Chain Saw', 'Pen'];
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const sound = window.WeaponSounds || null;
 
   // Cursor hotspots, in the 24x24 icon coordinates: where each weapon "hits".
   const HOTSPOTS = {
@@ -31,14 +32,26 @@
     Pen: [3, 21],
   };
 
-  const HAMMER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-    <path d="M36 36L86 86" stroke="#6b3f17" stroke-width="10" stroke-linecap="round"/>
-    <path d="M38 36L84 82" stroke="#a8743f" stroke-width="3" stroke-linecap="round"/>
-    <g transform="rotate(-45 30 30)">
-      <rect x="6" y="19" width="48" height="22" rx="3" fill="#6b7280"/>
-      <rect x="6" y="19" width="48" height="7" rx="3" fill="#aeb4be"/>
-      <rect x="2" y="21" width="9" height="18" rx="2" fill="#4b5563"/>
-    </g></svg>`;
+  // The hammer cursor: its head (30, 30) is the hotspot. `angle` swings it about the handle
+  // end, so the raised pose is shown while aiming and the lowered one for a moment on each hit.
+  const HAMMER_CURSOR_PX = 72;
+  function hammerCursor(angle) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${HAMMER_CURSOR_PX}" height="${HAMMER_CURSOR_PX}" viewBox="-6 -6 112 112">
+      <g transform="rotate(${angle} 88 88)">
+        <path d="M36 36L86 86" stroke="#0b1020" stroke-width="15" stroke-linecap="round"/>
+        <path d="M36 36L86 86" stroke="#7a4a1f" stroke-width="10" stroke-linecap="round"/>
+        <path d="M38 36L84 82" stroke="#b07a45" stroke-width="3" stroke-linecap="round"/>
+        <g transform="rotate(-45 30 30)" stroke="#0b1020" stroke-width="3" paint-order="stroke">
+          <rect x="6" y="19" width="48" height="22" rx="3" fill="#8a929e"/>
+          <rect x="9" y="21" width="42" height="5" rx="2" fill="#c7ccd4" stroke="none"/>
+          <rect x="2" y="21" width="9" height="18" rx="2" fill="#565f6d"/>
+        </g>
+      </g></svg>`;
+    const hot = Math.round(((30 + 6) * HAMMER_CURSOR_PX) / 112);
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${hot} ${hot}, crosshair`;
+  }
+  const HAMMER_RAISED = hammerCursor(22);
+  const HAMMER_DOWN = hammerCursor(0);
 
   const SHOE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 70">
     <path d="M8 44C7 24 13 14 22 14l18 2c6 10 18 14 32 16l28 6c12 3 16 10 14 16H9z" fill="#dc2626"/>
@@ -57,7 +70,6 @@
 
   // Sprite size in logical px and the point on it that lands where the user clicked.
   const SPRITES = {
-    Hammer: { svg: HAMMER_SVG, w: 96, h: 96, ax: 0.3, ay: 0.3, origin: '88% 88%' },
     Shoe: { svg: SHOE_SVG, w: 104, h: 61, ax: 0.5, ay: 0.6, origin: '50% 60%' },
     Egg: { svg: EGG_SVG, w: 34, h: 43, ax: 0.5, ay: 0.55, origin: '50% 55%' },
   };
@@ -92,6 +104,7 @@
   // ---- Cursor --------------------------------------------------------------------------------
 
   function cursorFor(w) {
+    if (w.name === 'Hammer') return HAMMER_RAISED;
     const size = 40;
     const scale = size / 28; // The icon is drawn in a 28-unit box: 24 plus a 2-unit margin.
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="-2 -2 28 28" fill="none" stroke-linecap="round" stroke-linejoin="round">`
@@ -241,38 +254,55 @@
       return {
         x: x + Math.cos(a) * r,
         y: y + Math.sin(a) * r,
-        r: rand(2.6, 4),
-        rays: Array.from({ length: 3 + Math.floor(rand(0, 4)) }, () => ({ a: rand(0, Math.PI * 2), len: rand(3, 8) })),
+        r: rand(4.5, 7),
+        rim: Array.from({ length: 14 }, () => rand(0.85, 1.2)),
+        rays: Array.from({ length: 4 + Math.floor(rand(0, 4)) }, () => ({ a: rand(0, Math.PI * 2), len: rand(5, 13) })),
       };
     });
   }
 
+  function rimPath(ctx, h, scale) {
+    ctx.beginPath();
+    h.rim.forEach((k, i) => {
+      const a = (i / h.rim.length) * Math.PI * 2;
+      const r = h.r * k * scale;
+      ctx.lineTo(h.x + Math.cos(a) * r, h.y + Math.sin(a) * r);
+    });
+    ctx.closePath();
+  }
+
   function drawHole(ctx, h) {
-    const scorch = ctx.createRadialGradient(h.x, h.y, h.r * 0.8, h.x, h.y, h.r * 3.2);
-    scorch.addColorStop(0, 'rgba(35,24,14,0.6)');
+    const scorch = ctx.createRadialGradient(h.x, h.y, h.r * 0.8, h.x, h.y, h.r * 2.8);
+    scorch.addColorStop(0, 'rgba(35,24,14,0.7)');
     scorch.addColorStop(1, 'rgba(35,24,14,0)');
     ctx.fillStyle = scorch;
     ctx.beginPath();
-    ctx.arc(h.x, h.y, h.r * 3.2, 0, Math.PI * 2);
+    ctx.arc(h.x, h.y, h.r * 2.8, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    ctx.lineWidth = 0.6;
+    // Hairline cracks radiating from the hole.
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 0.7;
     for (const ray of h.rays) {
       ctx.beginPath();
       ctx.moveTo(h.x + Math.cos(ray.a) * h.r, h.y + Math.sin(ray.a) * h.r);
-      ctx.lineTo(h.x + Math.cos(ray.a) * (h.r + ray.len), h.y + Math.sin(ray.a) * (h.r + ray.len));
+      ctx.lineTo(h.x + Math.cos(ray.a + 0.08) * (h.r + ray.len), h.y + Math.sin(ray.a + 0.08) * (h.r + ray.len));
       ctx.stroke();
     }
 
-    ctx.fillStyle = '#050505';
-    ctx.beginPath();
-    ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
+    // Torn, lighter rim around a dark, deep hole.
+    rimPath(ctx, h, 1.25);
+    ctx.fillStyle = 'rgba(210,200,185,0.55)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    rimPath(ctx, h, 1);
+    const depth = ctx.createRadialGradient(h.x - h.r * 0.2, h.y - h.r * 0.2, 0, h.x, h.y, h.r * 1.1);
+    depth.addColorStop(0, '#000');
+    depth.addColorStop(0.7, '#0a0806');
+    depth.addColorStop(1, '#2a221b');
+    ctx.fillStyle = depth;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     ctx.lineWidth = 0.8;
-    ctx.beginPath();
-    ctx.arc(h.x, h.y, h.r + 0.5, Math.PI * 0.9, Math.PI * 1.9);
     ctx.stroke();
   }
 
@@ -679,32 +709,28 @@
     };
   }
 
+  let hammerSwing = null;
+
   function strikeHammer(p) {
-    fly(
-      'Hammer',
-      p,
-      (x, y) => [
-        { transform: `translate(${x}px, ${y}px) rotate(-60deg) scale(1.3)`, opacity: 0 },
-        { opacity: 1, offset: 0.25 },
-        { transform: `translate(${x}px, ${y}px) rotate(0deg) scale(1)`, opacity: 1 },
-      ],
-      170,
-      () => {
-        if (hammerHits < CONFIG.hammerMaxHits) {
-          hammerHits++;
-          cracks.push(makeCracks(p.x, p.y, hammerHits));
-          renderPerm();
-        }
-        shake(5);
-      },
-      (x, y) => [
-        { transform: `translate(${x}px, ${y}px) rotate(0deg) scale(1)`, opacity: 1 },
-        { transform: `translate(${x}px, ${y}px) rotate(-28deg) scale(1.08)`, opacity: 0 },
-      ],
-    );
+    // Swing the hammer cursor down, then back up.
+    stage.style.cursor = HAMMER_DOWN;
+    clearTimeout(hammerSwing);
+    hammerSwing = setTimeout(() => {
+      if (weapon && weapon.name === 'Hammer') stage.style.cursor = HAMMER_RAISED;
+    }, 140);
+
+    const cracked = hammerHits < CONFIG.hammerMaxHits;
+    if (cracked) {
+      hammerHits++;
+      cracks.push(makeCracks(p.x, p.y, hammerHits));
+      renderPerm();
+    }
+    if (sound) sound.hammer(cracked ? hammerHits : 0);
+    shake(5);
   }
 
   function throwShoe(p) {
+    if (sound && !reducedMotion.matches) sound.whoosh(0.26);
     fly(
       'Shoe',
       p,
@@ -716,6 +742,7 @@
       260,
       () => {
         marks.push({ kind: 'shoe', x: p.x, y: p.y, angle: rand(-0.5, 0.5), born: performance.now(), sprite: makeShoePrint() });
+        if (sound) sound.shoe();
         shake(3);
         requestRender();
       },
@@ -727,6 +754,7 @@
   }
 
   function throwEgg(p) {
+    if (sound && !reducedMotion.matches) sound.whoosh(0.28);
     fly(
       'Egg',
       p,
@@ -738,6 +766,7 @@
       280,
       () => {
         marks.push({ kind: 'egg', x: p.x, y: p.y, angle: rand(0, Math.PI * 2), born: performance.now(), sprite: makeEggSplat() });
+        if (sound) sound.egg();
         shake(2);
         requestRender();
       },
@@ -747,6 +776,7 @@
   function fireGun(p) {
     shots.push(makeShot(p.x, p.y));
     renderPerm();
+    if (sound) sound.gun();
     shake(6);
     if (reducedMotion.matches) return;
     const k = cssPerUnit();
@@ -773,7 +803,9 @@
     if (!g.drawing && now - g.releasedAt >= CONFIG.strokeLingerMs) g.strokes = [];
     g.drawing = true;
     g.strokes.push([{ ...p, j: rand(-1, 1) }]);
-    activeDrag = { pointerId: e.pointerId, group: g, saw: weapon.name === 'Chain Saw' };
+    activeDrag = { pointerId: e.pointerId, group: g, saw: weapon.name === 'Chain Saw', last: p, lastTime: e.timeStamp };
+    activeDrag.voice = sound ? (activeDrag.saw ? sound.saw : sound.pen) : null;
+    if (activeDrag.voice) activeDrag.voice.start();
     stage.setPointerCapture(e.pointerId);
     if (activeDrag.saw) {
       stage.classList.add('sawing');
@@ -793,6 +825,13 @@
       stroke.push({ ...p, j: rand(-1, 1) });
       if (activeDrag.saw && Math.random() < 0.6) addSawdust(p.x, p.y);
     }
+    // Speed in logical px per ms; about 1 is a fast drag.
+    const p = toLogical(e);
+    const dt = Math.max(1, e.timeStamp - activeDrag.lastTime);
+    const speed = Math.hypot(p.x - activeDrag.last.x, p.y - activeDrag.last.y) / dt;
+    activeDrag.last = p;
+    activeDrag.lastTime = e.timeStamp;
+    if (activeDrag.voice) activeDrag.voice.speed(speed);
     requestRender();
   }
 
@@ -800,6 +839,7 @@
     if (!activeDrag || (e && e.pointerId !== activeDrag.pointerId)) return;
     activeDrag.group.drawing = false;
     activeDrag.group.releasedAt = performance.now();
+    if (activeDrag.voice) activeDrag.voice.stop();
     activeDrag = null;
     stage.classList.remove('sawing');
     requestRender();

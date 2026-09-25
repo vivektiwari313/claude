@@ -37,7 +37,10 @@
       <h2 id="profile-name"></h2>
       <div id="weapons" class="weapons" role="group" aria-label="Weapons"></div>
       <p id="weapon-status" class="weapon-status"></p>
-      <button id="reset-button" type="button" class="reset-button">Reset</button>
+      <div class="controls">
+        <button id="reset-button" type="button" class="control-button">Reset</button>
+        <button id="sound-button" type="button" class="control-button" aria-pressed="true">Sound on</button>
+      </div>
     </section>
 
     <p id="empty-state" class="empty-state">Search the directory and pick someone to see their profile.</p>
@@ -45,6 +48,7 @@
 
   <script src="/search.js"></script>
   <script src="/api.js"></script>
+  <script src="/sounds.js"></script>
   <script src="/effects.js"></script>
   <script src="/app.js"></script>
 </body>

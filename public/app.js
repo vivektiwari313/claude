@@ -182,6 +182,18 @@ function onWeaponClick(btn, weapon) {
 
 resetButton.addEventListener('click', () => window.WeaponFX.reset());
 
+const soundButton = document.getElementById('sound-button');
+function showSoundState() {
+  const on = window.WeaponSounds.isEnabled();
+  soundButton.textContent = on ? 'Sound on' : 'Sound off';
+  soundButton.setAttribute('aria-pressed', String(on));
+}
+soundButton.addEventListener('click', () => {
+  window.WeaponSounds.setEnabled(!window.WeaponSounds.isEnabled());
+  showSoundState();
+});
+showSoundState();
+
 input.addEventListener('input', () => {
   clearTimeout(debounceTimer);
   const query = input.value;
