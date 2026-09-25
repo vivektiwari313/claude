@@ -1,0 +1,2 @@
+# claude
+For Claude Code
