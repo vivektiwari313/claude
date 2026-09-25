@@ -6,7 +6,20 @@ A small web app with a searchable directory of 400 users.
   `data/users.json`: 400 users, each with a unique name and an SVG display picture.
 - **Frontend** (`public/`): a search bar that shows live suggestions as you type. Pick a user
   to see their name and a large display picture, with six clickable circular weapon buttons
-  (Hammer, Shoe, Egg, Chain Saw, Gun, Pen) below it.
+  (Hammer, Shoe, Egg, Chain Saw, Gun, Pen) below it. Pick a weapon and use it on the picture:
+
+  | Weapon | Effect |
+  | --- | --- |
+  | Hammer | Swings in and cracks the picture. Each hit adds more cracks, up to 5 hits. |
+  | Shoe | Flies in and leaves a muddy shoe print for 3 seconds. |
+  | Egg | Splatters on the picture; the mess stays for 3 seconds. |
+  | Chain Saw | Drag to cut the picture. Cuts stay until 3 seconds after you let go. |
+  | Gun | Each click fires a shotgun blast of bullet holes. |
+  | Pen | Drag to scribble in red. Lines stay until 3 seconds after you let go. |
+
+  Starting a new chain saw or pen drag within those 3 seconds keeps the earlier marks. The
+  **Reset** button clears everything, and so does picking a different user. The limits and
+  timings are in `CONFIG` at the top of `public/effects.js`.
 
 ## Quick start: no install needed
 

@@ -18,6 +18,7 @@ body {
   background: radial-gradient(circle at top, #1e1b4b 0%, var(--bg) 60%);
   color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow-x: clip;
 }
 
 .container {
@@ -106,15 +107,70 @@ h1 {
   animation: fade-in 0.25s ease-out;
 }
 
-.profile-picture {
-  width: 260px;
-  height: 260px;
-  max-width: 80vw;
-  max-height: 80vw;
-  object-fit: cover;
+/* The picture and the weapon effects drawn over it. */
+.stage-wrap {
+  position: relative;
+  width: min(260px, 80vw);
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
   border-radius: 24px;
-  border: 4px solid var(--surface-hover);
-  box-shadow: 0 20px 50px rgb(0 0 0 / 0.5);
+  box-shadow: 0 0 0 4px var(--surface-hover), 0 20px 50px rgb(0 0 0 / 0.5);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* With a weapon selected, touch drags draw instead of scrolling the page. */
+.stage.armed { touch-action: none; }
+
+.stage.sawing { animation: buzz 70ms linear infinite; }
+
+.profile-picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  -webkit-user-drag: none;
+}
+
+.fx-canvas,
+.fx-sprites {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.fx-sprites { z-index: 2; }
+
+.fx-sprite {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.fx-sprite svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 6px 8px rgb(0 0 0 / 0.45));
+}
+
+.fx-flash {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fffbe6 0%, #fde047 30%, rgb(249 115 22 / 0.6) 55%, transparent 70%);
 }
 
 .profile h2 {
@@ -168,6 +224,22 @@ h1 {
   letter-spacing: 0.02em;
 }
 
+.reset-button {
+  margin-top: 16px;
+  padding: 10px 28px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.reset-button:hover { background: var(--surface); border-color: var(--accent); }
+.reset-button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
 .empty-state {
   margin-top: 48px;
   text-align: center;
@@ -176,6 +248,17 @@ h1 {
 
 @media (max-width: 480px) {
   .weapons { grid-template-columns: repeat(3, auto); }
+}
+
+@keyframes buzz {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(1px, -1px); }
+  50% { transform: translate(-1px, 1px); }
+  75% { transform: translate(1px, 1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage.sawing { animation: none; }
 }
 
 @keyframes fade-in {

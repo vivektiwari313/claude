@@ -46,11 +46,12 @@ function embeddedApi(dbFile) {
 }
 
 function build(dbFile = SAMPLE_FILE) {
-  const scripts = [read('search.js'), embeddedApi(dbFile), read('app.js')]
+  let html = read('index.html');
+  const scripts = [...html.matchAll(/<script src="\/([\w.-]+)"><\/script>/g)]
+    .map(([, file]) => (file === 'api.js' ? embeddedApi(dbFile) : read(file)))
     .map((code) => `<script>\n${inlineSafe(code)}</script>`)
     .join('\n');
 
-  let html = read('index.html');
   html = html.replace(/<link rel="stylesheet" href="\/styles.css">/, () => `<style>\n${read('styles.css')}</style>`);
   html = html.replace(/(\s*<script src="[^"]+"><\/script>)+/, () => `\n  ${scripts}`);
   if (/src="\/|href="\//.test(html)) throw new Error('Standalone build still references server files');

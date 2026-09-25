@@ -26,10 +26,18 @@
     </div>
 
     <section id="profile" class="profile" hidden aria-live="polite">
-      <img id="profile-picture" class="profile-picture" alt="">
+      <div class="stage-wrap">
+        <div id="stage" class="stage">
+          <img id="profile-picture" class="profile-picture" alt="" draggable="false">
+          <canvas id="fx-perm" class="fx-canvas" aria-hidden="true"></canvas>
+          <canvas id="fx-temp" class="fx-canvas" aria-hidden="true"></canvas>
+        </div>
+        <div id="fx-sprites" class="fx-sprites" aria-hidden="true"></div>
+      </div>
       <h2 id="profile-name"></h2>
       <div id="weapons" class="weapons" role="group" aria-label="Weapons"></div>
       <p id="weapon-status" class="weapon-status"></p>
+      <button id="reset-button" type="button" class="reset-button">Reset</button>
     </section>
 
     <p id="empty-state" class="empty-state">Search the directory and pick someone to see their profile.</p>
@@ -37,6 +45,7 @@
 
   <script src="/search.js"></script>
   <script src="/api.js"></script>
+  <script src="/effects.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

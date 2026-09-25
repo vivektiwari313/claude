@@ -37,6 +37,15 @@ const profilePicture = document.getElementById('profile-picture');
 const weaponsEl = document.getElementById('weapons');
 const weaponStatus = document.getElementById('weapon-status');
 const emptyState = document.getElementById('empty-state');
+const resetButton = document.getElementById('reset-button');
+
+window.WeaponFX.setup({
+  stage: document.getElementById('stage'),
+  photo: profilePicture,
+  permCanvas: document.getElementById('fx-perm'),
+  tempCanvas: document.getElementById('fx-temp'),
+  sprites: document.getElementById('fx-sprites'),
+});
 
 let suggestions = [];
 let activeIndex = -1;
@@ -136,6 +145,8 @@ function selectUser(user) {
   setPicture(profilePicture, user);
   profilePicture.alt = `${user.name}'s display picture`;
   renderWeapons();
+  window.WeaponFX.setWeapon(null);
+  window.WeaponFX.reset();
   weaponStatus.textContent = NO_WEAPON_TEXT;
   weaponStatus.classList.remove('is-selected');
   profile.hidden = false;
@@ -166,7 +177,10 @@ function onWeaponClick(btn, weapon) {
   if (!wasSelected) btn.setAttribute('aria-pressed', 'true');
   weaponStatus.textContent = wasSelected ? NO_WEAPON_TEXT : weapon.name;
   weaponStatus.classList.toggle('is-selected', !wasSelected);
+  window.WeaponFX.setWeapon(wasSelected ? null : weapon);
 }
+
+resetButton.addEventListener('click', () => window.WeaponFX.reset());
 
 input.addEventListener('input', () => {
   clearTimeout(debounceTimer);
