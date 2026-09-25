@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "seed": "node scripts/seed.js",
+    "build": "node scripts/build-standalone.js",
     "start": "node server/index.js",
     "test": "node --test"
   },

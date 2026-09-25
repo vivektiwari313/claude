@@ -100,8 +100,7 @@ function setActive(index) {
 async function fetchSuggestions(query) {
   const seq = ++requestSeq;
   try {
-    const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
-    const data = await res.json();
+    const data = await window.UserApi.search(query);
     // Ignore responses that arrive after a newer keystroke's request.
     if (seq !== requestSeq || input.value.trim() !== query.trim()) return;
     suggestions = data;

@@ -66,3 +66,9 @@ test('serves the frontend and blocks path traversal', async () => {
   assert.match(await res.text(), /id="search-input"/);
   assert.notEqual((await fetch(`${base}/..%2fpackage.json`)).status, 200);
 });
+
+test('standalone build is up to date with the sources', () => {
+  const fs = require('node:fs');
+  const { build, OUT_FILE: STANDALONE } = require('../scripts/build-standalone');
+  assert.equal(fs.readFileSync(STANDALONE, 'utf8'), build(), 'run: node scripts/build-standalone.js');
+});

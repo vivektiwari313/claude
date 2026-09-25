@@ -8,15 +8,23 @@ A small web app with a searchable directory of 400 users.
   to see their name and a large display picture, with six clickable circular weapon buttons
   (Sword, Bow, Axe, Hammer, Spear, Dagger) below it.
 
-## Run
+## Quick start: no install needed
+
+Open **`standalone/user-search.html`** in any modern browser (double-click it). It is a single
+self-contained file with the page, the styles and all 400 users with their pictures built in.
+It needs no npm, no Node.js, no server and no internet connection. You can copy that one file
+anywhere, email it, or put it on a USB stick.
+
+## Run the server version (optional, needs Node.js 18+)
 
 ```sh
 npm start          # http://localhost:3000 (set PORT to change)
 npm test           # API tests
 npm run seed       # regenerate data/users.json (deterministic)
+npm run build      # rebuild standalone/user-search.html after changing public/ or data/
 ```
 
-Requires Node.js 18+. There are no npm dependencies to install.
+There are no npm dependencies to install; `node server/index.js` works just as well as `npm start`.
 
 ## API
 
