@@ -129,4 +129,4 @@ if (require.main === module) {
   console.log(`Wrote ${users.length} users to ${path.relative(process.cwd(), OUT_FILE)}`);
 }
 
-module.exports = { buildUsers, OUT_FILE };
+module.exports = { buildUsers, avatarSvg, prng, OUT_FILE };

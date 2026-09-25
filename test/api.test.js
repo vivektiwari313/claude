@@ -46,7 +46,7 @@ test('GET /api/users/search returns suggestions', async () => {
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.length, 10);
-  assert.deepEqual(Object.keys(body[0]).sort(), ['id', 'name', 'picture']);
+  assert.deepEqual(Object.keys(body[0]).sort(), ['fallback', 'id', 'name', 'picture']);
 });
 
 test('GET /api/users/:id and its picture', async () => {
@@ -71,4 +71,28 @@ test('standalone build is up to date with the sources', () => {
   const fs = require('node:fs');
   const { build, OUT_FILE: STANDALONE } = require('../scripts/build-standalone');
   assert.equal(fs.readFileSync(STANDALONE, 'utf8'), build(), 'run: node scripts/build-standalone.js');
+});
+
+test('import-members keeps only name and https photo, with a fallback picture', () => {
+  const { buildMembers } = require('../scripts/import-members');
+  const members = buildMembers({
+    members: [
+      { id: 'U2', name: 'Zed  Quinn', title: 'Secret', avatar_url: 'https://example.com/z.jpg' },
+      { id: 'U1', name: 'Ana Bell', avatar_url: null },
+      { id: 'U3', name: 'Bad Link', avatar_url: 'javascript:alert(1)' },
+      { name: '   ' },
+    ],
+  });
+  assert.deepEqual(members.map((m) => [m.name, m.avatarUrl]), [
+    ['Ana Bell', null], ['Bad Link', null], ['Zed Quinn', 'https://example.com/z.jpg'],
+  ]);
+  for (const m of members) {
+    assert.deepEqual(Object.keys(m).sort(), ['avatarUrl', 'id', 'name', 'picture']);
+    assert.match(m.picture, /^<svg[\s\S]*<\/svg>$/);
+  }
+
+  const { searchUsers } = require('../server/app');
+  const [zed] = searchUsers(new Map(members.map((m) => [m.id, m])), 'zed');
+  assert.equal(zed.picture, 'https://example.com/z.jpg');
+  assert.equal(zed.fallback, `/api/users/${zed.id}/picture`);
 });

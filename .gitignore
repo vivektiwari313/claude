@@ -1,1 +1,3 @@
 node_modules/
+# Real people's data from import-members.js and builds made from it. Never commit.
+private/

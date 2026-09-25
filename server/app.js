@@ -22,8 +22,11 @@ function loadUsers(file) {
   return new Map(users.map((u) => [u.id, u]));
 }
 
+// `picture` is the photo to show; `fallback` is the stored SVG, used when the photo is missing
+// or fails to load.
 function publicUser(user) {
-  return { id: user.id, name: user.name, picture: `/api/users/${user.id}/picture` };
+  const fallback = `/api/users/${user.id}/picture`;
+  return { id: user.id, name: user.name, picture: user.avatarUrl || fallback, fallback };
 }
 
 function searchUsers(users, rawQuery, limit = MAX_SUGGESTIONS) {

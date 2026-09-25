@@ -56,6 +56,16 @@ function highlight(name, query) {
     + escapeHtml(name.slice(i + query.length));
 }
 
+// Shows the user's photo, switching to their generated picture if the photo can't load.
+function setPicture(img, user) {
+  img.referrerPolicy = 'no-referrer';
+  img.onerror = () => {
+    img.onerror = null;
+    if (user.fallback && img.src !== user.fallback) img.src = user.fallback;
+  };
+  img.src = user.picture;
+}
+
 function closeSuggestions() {
   list.hidden = true;
   list.innerHTML = '';
@@ -76,7 +86,13 @@ function renderSuggestions(query) {
     li.id = `suggestion-${user.id}`;
     li.setAttribute('role', 'option');
     li.setAttribute('aria-selected', String(i === activeIndex));
-    li.innerHTML = `<img src="${user.picture}" alt="" loading="lazy"><span>${highlight(user.name, query.trim())}</span>`;
+    const img = document.createElement('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    setPicture(img, user);
+    const label = document.createElement('span');
+    label.innerHTML = highlight(user.name, query.trim());
+    li.append(img, label);
     // mousedown fires before the input's blur, so the list is still there when we pick.
     li.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -117,7 +133,7 @@ function selectUser(user) {
   closeSuggestions();
 
   profileName.textContent = user.name;
-  profilePicture.src = user.picture;
+  setPicture(profilePicture, user);
   profilePicture.alt = `${user.name}'s display picture`;
   renderWeapons();
   weaponStatus.textContent = 'Choose a weapon.';
