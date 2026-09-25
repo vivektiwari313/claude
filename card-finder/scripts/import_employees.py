@@ -59,18 +59,22 @@ def main(path):
         name = pick(m.get("real_name"), p.get("real_name"), p.get("display_name"), m.get("name"), m.get("full_name"))
         if not name:
             continue
-        handle = pick(p.get("display_name"), m.get("name"), m.get("username"))
+        # A bare "name" is the full name in some exports, so only use it as a handle when real_name exists.
+        handle = pick(p.get("display_name"), m.get("username"), m.get("name") if m.get("real_name") else "")
         emp_id = pick(m.get("id"), m.get("user_id"), m.get("email"), p.get("email")) or re.sub(r"\W+", "-", name.lower())
         if emp_id in seen:
             continue
         seen.add(emp_id)
-        out.append({
+        emp = {
             "id": emp_id,
             "name": name,
             "title": pick(p.get("title"), m.get("title")),
-            "slack": f"@{handle}" if handle else "",
+            "slack": f"@{handle}" if handle and handle != name else "",
+            "avatar": pick(m.get("avatar_url"), p.get("image_192"), p.get("image_72")),
+            "profileUrl": pick(m.get("profile_url")),
             "cards": cards.get(emp_id, []),
-        })
+        }
+        out.append({k: v for k, v in emp.items() if v or k == "cards"})
     out.sort(key=lambda e: e["name"].lower())
     body = ",\n".join("  " + json.dumps(e, ensure_ascii=False) for e in out)
     OUT.write_text(

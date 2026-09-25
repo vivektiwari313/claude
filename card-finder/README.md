@@ -16,7 +16,7 @@ This is a **prototype**: there's no login ("You are" picker instead), data is sa
 
 **Input side**: *My cards*: pick a bank, tick the cards you hold from the checklist, and Save. Come back any time to update.
 
-**People**: everyone and their cards. The top 3 cardholders (ties included) get a **Power user** badge. Change `POWER_USER_TOP_N` in `app.js` to adjust.
+**People**: everyone and their cards. The top 3 cardholders (ties included, minimum 3 cards) get a **Power user** badge. Change `POWER_USER_TOP_N` and `POWER_USER_MIN_CARDS` in `app.js` to adjust.
 
 ## Run it
 
@@ -32,7 +32,8 @@ cd card-finder && python3 -m http.server 8000
 | --- | --- |
 | `data/Indian_Credit_Card_Catalogue_v0_5.xlsx` | Source card catalogue |
 | `data/cards.js` | Generated from the xlsx. Don't edit by hand |
-| `data/employees.js` | Employees. Still **dummy** names until the Slack member export is imported |
+| `data/random_channel_members.json` | Slack member export (357 people from #random) |
+| `data/employees.js` | Employees, generated from the Slack export. Everyone starts with no cards |
 
 Update the cards after a new catalogue version:
 

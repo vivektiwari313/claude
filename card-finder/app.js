@@ -1,8 +1,10 @@
 (() => {
   "use strict";
 
-  // Employees whose card count ranks in the top N (ties included) get the Power user badge.
+  // Employees whose card count ranks in the top N (ties included) get the Power user badge,
+  // as long as they hold at least POWER_USER_MIN_CARDS cards.
   const POWER_USER_TOP_N = 3;
+  const POWER_USER_MIN_CARDS = 3;
   const STORAGE_KEY = "cardfinder.v2";
   const PURPOSES = [
     "Offer or discount on a purchase",
@@ -30,7 +32,10 @@
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); } catch { /* storage unavailable */ }
   }
+  // Drop anything saved for people who are no longer in the employee list (e.g. the old sample names).
   if (db.me && !empById.has(db.me)) db.me = "";
+  for (const id of Object.keys(db.holdings)) if (!empById.has(id)) delete db.holdings[id];
+  db.requests = db.requests.filter((r) => empById.has(r.from) && r.to.some((id) => empById.has(id)));
 
   // ---------- derived data ----------
   const cardsOf = (empId) => (db.holdings[empId] ?? empById.get(empId)?.cards ?? []).filter((id) => cardById.has(id));
@@ -45,7 +50,7 @@
       }
     }
     const counts = employees.map((e) => cardsOf(e.id).length).filter((n) => n > 0).sort((a, b) => b - a);
-    powerCutoff = counts.length ? counts[Math.min(POWER_USER_TOP_N, counts.length) - 1] : Infinity;
+    powerCutoff = counts.length ? Math.max(POWER_USER_MIN_CARDS, counts[Math.min(POWER_USER_TOP_N, counts.length) - 1]) : Infinity;
   }
   const holdersOf = (id) => holdersByCard.get(id) || [];
   const isPower = (e) => cardsOf(e.id).length >= powerCutoff;
@@ -71,6 +76,10 @@
   const nameOf = (id) => empById.get(id)?.name || "Someone";
   const when = (iso) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
   const subtitle = (e) => [e.title || e.team, e.slack].filter(Boolean).join(" · ");
+  const slackLink = (e) => (e?.profileUrl ? `<a class="slack-link" href="${esc(e.profileUrl)}" target="_blank" rel="noopener">Slack profile ↗</a>` : "");
+  // Two people can share a name; add their title to tell them apart.
+  const nameCounts = employees.reduce((m, e) => m.set(e.name, (m.get(e.name) || 0) + 1), new Map());
+  const pickerLabel = (e) => (nameCounts.get(e.name) > 1 && e.title ? `${e.name} (${e.title})` : e.name);
 
   function hashHue(str) {
     let h = 0;
@@ -113,7 +122,8 @@
   };
   const avatarBg = (e) => `hsl(${hashHue(e.name)} 42% 42%)`;
   const initials = (name) => name.split(/\s+/).filter(Boolean).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
-  const avatar = (e) => `<span class="avatar" style="--avatar-bg:${avatarBg(e)}">${esc(initials(e.name))}</span>`;
+  // Initials sit underneath; the Slack photo covers them when it loads and is removed if it fails.
+  const avatar = (e) => `<span class="avatar" style="--avatar-bg:${avatarBg(e)}">${esc(initials(e.name))}${e.avatar ? `<img src="${esc(e.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""}</span>`;
 
   function highlight(text, terms) {
     if (!terms.length) return esc(text);
@@ -122,7 +132,7 @@
   }
 
   const STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3 5.8 20.9l1.6-7L2 9.2l7.1-.6z"/></svg>';
-  const powerBadge = (e) => (isPower(e) ? `<span class="power" title="Among the top ${POWER_USER_TOP_N} cardholders at GBL">${STAR}Power user</span>` : "");
+  const powerBadge = (e) => (isPower(e) ? `<span class="power" title="Among the top ${POWER_USER_TOP_N} cardholders at GBL (${POWER_USER_MIN_CARDS}+ cards)">${STAR}Power user</span>` : "");
   function ratingBadge(empId) {
     const r = ratingOf(empId);
     return r ? `<span class="rating" title="Average of ${plural(r.n, "rating")}">${STAR}${r.avg.toFixed(1)} <small>(${r.n})</small></span>` : "";
@@ -143,7 +153,7 @@
   function renderMe() {
     const sel = $("#me-select");
     sel.innerHTML = `<option value="">Choose your name</option>` +
-      employees.map((e) => `<option value="${esc(e.id)}" ${e.id === db.me ? "selected" : ""}>${esc(e.name)}</option>`).join("");
+      employees.map((e) => `<option value="${esc(e.id)}" ${e.id === db.me ? "selected" : ""}>${esc(pickerLabel(e))}</option>`).join("");
     $("#pick-me").hidden = !!db.me;
   }
 
@@ -344,7 +354,7 @@
     if (!items.length) { ul.innerHTML = `<li class="empty"><strong>No requests yet</strong>When a colleague asks for one of your cards, it shows up here.</li>`; return; }
     ul.innerHTML = items.map((r) => {
       const from = empById.get(r.from);
-      const by = `From <strong>${esc(nameOf(r.from))}</strong> ${from ? ratingBadge(from.id) : ""}`;
+      const by = `From <strong>${esc(nameOf(r.from))}</strong> ${from ? ratingBadge(from.id) : ""} ${slackLink(from)}`;
       if (r.status === "cancelled") return reqCard(r, `${by} · <span class="pill muted">Withdrawn</span>`, "");
       if (r.status === "open" && r.declined.includes(db.me)) return reqCard(r, `${by} · <span class="pill muted">You declined</span>`, "");
       if (r.status === "open") return reqCard(r, `${by} · <span class="pill wait">Waiting for a reply</span> <span class="note-inline">${plural(r.to.length, "person", "people")} asked</span>`,
@@ -379,7 +389,7 @@
       }
       const helper = empById.get(r.matchedWith);
       if (r.status === "matched") {
-        return reqCard(r, `<span class="pill ok">Matched with ${esc(helper?.name || "a colleague")}</span> <span class="note-inline">Use the card together offline, then mark it done.</span>`,
+        return reqCard(r, `<span class="pill ok">Matched with ${esc(helper?.name || "a colleague")}</span> ${slackLink(helper)} <span class="note-inline">Use the card together offline, then mark it done.</span>`,
           `<button class="btn primary small" data-done="${esc(r.id)}">Mark done</button>`);
       }
       const mine = r.ratings.bySender;
@@ -438,7 +448,7 @@
       (powerCount ? ` · ${plural(powerCount, "power user")} (top ${POWER_USER_TOP_N} cardholders, ${powerCutoff}+ cards)` : "");
 
     const grid = $("#people-grid");
-    const shown = list.slice(0, 300);
+    const shown = list.slice(0, 500);
     grid.innerHTML = shown.length ? shown.map((e) => {
       const own = cardsOf(e.id);
       return `
@@ -447,7 +457,8 @@
           ${avatar(e)}
           <span class="who">
             <span class="who-name">${esc(e.name)}${e.id === db.me ? ' <span class="chip-tag">You</span>' : ""} ${powerBadge(e)}</span>
-            <span class="who-meta">${esc(subtitle(e))} ${ratingBadge(e.id)}</span>
+            <span class="who-meta">${esc(subtitle(e) || "GBL")} ${ratingBadge(e.id)}</span>
+            ${slackLink(e)}
           </span>
           <span class="card-count">${own.length}<small>${own.length === 1 ? "card" : "cards"}</small></span>
         </div>
@@ -717,6 +728,11 @@
       toast("All cards, requests and ratings erased.");
     });
   }
+
+  // A photo that fails to load (offline, blocked host) falls back to the initials underneath.
+  document.addEventListener("error", (e) => {
+    if (e.target instanceof HTMLImageElement && e.target.parentElement?.classList.contains("avatar")) e.target.remove();
+  }, true);
 
   // ---------- boot ----------
   fillFilters();
