@@ -6,6 +6,8 @@
   const POWER_USER_TOP_N = 3;
   const POWER_USER_MIN_CARDS = 3;
   const STORAGE_KEY = "cardfinder.v2";
+  // Prototype login: everyone shares one password.
+  const PASSWORD = "12345";
   const PURPOSES = [
     "Offer or discount on a purchase",
     "Airport lounge access",
@@ -149,12 +151,86 @@
   // ---------- UI state ----------
   const ui = { query: "", issuer: "", category: "", heldOnly: false, selected: null, purpose: "", receivers: new Set(), note: "", view: "request" };
 
-  // ---------- identity ----------
-  function renderMe() {
-    const sel = $("#me-select");
-    sel.innerHTML = `<option value="">Choose your name</option>` +
-      employees.map((e) => `<option value="${esc(e.id)}" ${e.id === db.me ? "selected" : ""}>${esc(pickerLabel(e))}</option>`).join("");
-    $("#pick-me").hidden = !!db.me;
+  // ---------- login ----------
+  const login = { pick: null, matches: [], active: -1 };
+
+  function loginMatches(q) {
+    const terms = norm(q).split(" ").filter(Boolean);
+    if (!terms.length) return [];
+    const scored = [];
+    for (const e of employees) {
+      const n = norm(e.name);
+      const words = n.split(" ");
+      if (!terms.every((t) => words.some((w) => w.startsWith(t)) || n.includes(t))) continue;
+      const score = (n.startsWith(terms[0]) ? 2 : 0) + (words.some((w) => w.startsWith(terms[0])) ? 1 : 0);
+      scored.push({ e, score });
+    }
+    return scored.sort((a, b) => b.score - a.score || a.e.name.localeCompare(b.e.name)).slice(0, 8).map((x) => x.e);
+  }
+
+  function renderLoginOptions() {
+    const list = $("#login-options");
+    const input = $("#login-name");
+    const open = login.matches.length > 0 || (input.value.trim() && !login.pick);
+    list.hidden = !open;
+    input.setAttribute("aria-expanded", String(open));
+    if (!open) { input.removeAttribute("aria-activedescendant"); return; }
+    if (!login.matches.length) {
+      list.innerHTML = `<li class="combo-empty">No one called “${esc(input.value.trim())}”. Check the spelling.</li>`;
+      return;
+    }
+    const terms = norm(input.value).split(" ").filter(Boolean);
+    list.innerHTML = login.matches.map((e, i) => `
+      <li class="combo-opt" role="option" id="opt-${esc(e.id)}" data-login="${esc(e.id)}" aria-selected="${i === login.active}">
+        ${avatar(e)}
+        <span class="who"><span class="who-name">${highlight(e.name, terms)}</span><span class="who-meta">${esc(e.title || "GBL")}</span></span>
+      </li>`).join("");
+    const act = login.matches[login.active];
+    if (act) input.setAttribute("aria-activedescendant", `opt-${act.id}`); else input.removeAttribute("aria-activedescendant");
+  }
+
+  function pickLogin(id) {
+    const e = empById.get(id);
+    if (!e) return;
+    login.pick = id;
+    login.matches = [];
+    login.active = -1;
+    $("#login-name").value = pickerLabel(e);
+    $("#login-error").hidden = true;
+    renderLoginOptions();
+    $("#login-password").focus();
+  }
+
+  function loginError(msg, focus) {
+    const el = $("#login-error");
+    el.textContent = msg;
+    el.hidden = false;
+    if (focus) $(focus).focus();
+  }
+
+  function showLogin() {
+    $("#app").hidden = true;
+    $("#login").hidden = false;
+    closeDialog();
+    login.pick = null; login.matches = []; login.active = -1;
+    $("#login-name").value = "";
+    $("#login-password").value = "";
+    $("#login-error").hidden = true;
+    renderLoginOptions();
+    $("#login-name").focus();
+  }
+
+  function showApp() {
+    const me = empById.get(db.me);
+    $("#login").hidden = true;
+    $("#app").hidden = false;
+    $("#session").hidden = false;
+    $("#session-who").innerHTML = `${avatar(me)}<span class="who"><span class="who-name">${esc(me.name)}</span><span class="who-meta">${esc(me.title || "GBL")}</span></span>`;
+    ui.selected = null; ui.receivers = new Set(); ui.purpose = ""; ui.note = "";
+    renderPurposes();
+    resetDraft();
+    setView("request");
+    renderAll();
   }
 
   // ---------- 1. request: purpose ----------
@@ -431,46 +507,6 @@
       : `<li class="empty-inline">No cards yet. Tick the ones you hold and save.</li>`;
   }
 
-  // ---------- 5. people ----------
-  function renderPeople() {
-    const q = norm($("#people-search").value);
-    const sort = $("#people-sort").value;
-    const withCards = $("#people-with-cards").checked;
-    const list = employees.filter((e) => (!q || norm(`${e.name} ${e.title || e.team || ""} ${e.slack || ""}`).includes(q)) && (!withCards || cardsOf(e.id).length));
-    const byName = (a, b) => a.name.localeCompare(b.name);
-    list.sort(sort === "name" ? byName
-      : sort === "rating" ? (a, b) => (ratingOf(b.id)?.avg || 0) - (ratingOf(a.id)?.avg || 0) || byName(a, b)
-      : (a, b) => cardsOf(b.id).length - cardsOf(a.id).length || byName(a, b));
-
-    const holders = employees.filter((e) => cardsOf(e.id).length).length;
-    const powerCount = employees.filter(isPower).length;
-    $("#power-note").textContent = `${plural(employees.length, "person", "people")} · ${holders} have added cards` +
-      (powerCount ? ` · ${plural(powerCount, "power user")} (top ${POWER_USER_TOP_N} cardholders, ${powerCutoff}+ cards)` : "");
-
-    const grid = $("#people-grid");
-    const shown = list.slice(0, 500);
-    grid.innerHTML = shown.length ? shown.map((e) => {
-      const own = cardsOf(e.id);
-      return `
-      <article class="person ${isPower(e) ? "is-power" : ""}">
-        <div class="person-head">
-          ${avatar(e)}
-          <span class="who">
-            <span class="who-name">${esc(e.name)}${e.id === db.me ? ' <span class="chip-tag">You</span>' : ""} ${powerBadge(e)}</span>
-            <span class="who-meta">${esc(subtitle(e) || "GBL")} ${ratingBadge(e.id)}</span>
-            ${slackLink(e)}
-          </span>
-          <span class="card-count">${own.length}<small>${own.length === 1 ? "card" : "cards"}</small></span>
-        </div>
-        ${own.length ? `<ul class="person-cards">${own.map((id) => {
-          const c = cardById.get(id);
-          return `<li><button data-goto="${esc(id)}" title="Request ${esc(c.issuer)} ${esc(c.name)}"><span class="dot" style="--card-bg:${cardBg(c)}"></span>${esc(shortLabel(c))}</button></li>`;
-        }).join("")}</ul>` : `<p class="note">No cards added yet.</p>`}
-      </article>`;
-    }).join("") + (list.length > shown.length ? `<p class="note">Showing ${shown.length} of ${list.length}. Search to narrow down.</p>` : "")
-      : `<p class="empty"><strong>No one matches</strong>Try a first name, or clear “Only people with cards”.</p>`;
-  }
-
   // ---------- dialogs ----------
   let openId = null;
   function openDialog(id) {
@@ -531,7 +567,6 @@
   function renderView() {
     if (ui.view === "request") { renderList(); renderDetail(); }
     if (ui.view === "mycards") renderMyCards();
-    if (ui.view === "people") renderPeople();
   }
   function renderAll() {
     recompute();
@@ -553,20 +588,56 @@
 
   // ---------- events ----------
   function bind() {
-    $("#me-select").addEventListener("change", (e) => {
-      db.me = e.target.value;
+    // Login
+    const nameInput = $("#login-name");
+    nameInput.addEventListener("input", () => {
+      login.pick = null;
+      login.matches = loginMatches(nameInput.value);
+      login.active = login.matches.length ? 0 : -1;
+      renderLoginOptions();
+    });
+    nameInput.addEventListener("keydown", (e) => {
+      const n = login.matches.length;
+      if (e.key === "ArrowDown" && n) { e.preventDefault(); login.active = (login.active + 1) % n; renderLoginOptions(); }
+      else if (e.key === "ArrowUp" && n) { e.preventDefault(); login.active = (login.active - 1 + n) % n; renderLoginOptions(); }
+      else if (e.key === "Enter" && n && login.active >= 0) { e.preventDefault(); pickLogin(login.matches[login.active].id); }
+      else if (e.key === "Escape") { login.matches = []; renderLoginOptions(); }
+    });
+    nameInput.addEventListener("blur", () => setTimeout(() => { login.matches = []; renderLoginOptions(); }, 120));
+    // mousedown so the pick lands before the input's blur closes the list
+    $("#login-options").addEventListener("mousedown", (e) => {
+      const opt = e.target.closest("[data-login]");
+      if (opt) { e.preventDefault(); pickLogin(opt.dataset.login); }
+    });
+    $("#login-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!login.pick) {
+        // Accept a typed name that matches exactly one person.
+        const typed = norm(nameInput.value);
+        const exact = employees.filter((x) => norm(x.name) === typed || norm(pickerLabel(x)) === typed);
+        if (exact.length === 1) login.pick = exact[0].id;
+      }
+      if (!login.pick) return loginError(nameInput.value.trim() ? "Pick your name from the list." : "Enter your name.", "#login-name");
+      if ($("#login-password").value !== PASSWORD) {
+        $("#login-password").value = "";
+        return loginError("Wrong password. Try again.", "#login-password");
+      }
+      db.me = login.pick;
       save();
-      renderMe();
-      resetDraft();
-      if (ui.selected) ui.receivers = new Set(holdersOf(ui.selected).filter((x) => x.id !== db.me).map((x) => x.id));
-      renderAll();
-      if (db.me) toast(`You're now using Card Finder as ${nameOf(db.me)}.`);
+      showApp();
+      toast(`Welcome, ${firstName(empById.get(db.me))}.`);
+    });
+    $("#logout").addEventListener("click", () => {
+      db.me = "";
+      save();
+      showLogin();
     });
 
     $("#purpose-chips").addEventListener("click", (e) => {
       const b = e.target.closest("[data-purpose]");
       if (!b) return;
-      ui.purpose = b.dataset.purpose;
+      // A second click on the selected purpose clears it.
+      ui.purpose = ui.purpose === b.dataset.purpose ? "" : b.dataset.purpose;
       renderPurposes();
       renderDetail();
     });
@@ -647,24 +718,10 @@
         if (r) copyText(slackText(r, r.to.length === 1 ? empById.get(r.to[0]) : null));
         return;
       }
-      const go = t.closest("[data-goto]");
-      if (go) {
-        ui.query = ""; $("#card-search").value = "";
-        ui.issuer = ""; $("#issuer-filter").value = "";
-        ui.category = ""; $("#category-filter").value = "";
-        setView("request");
-        selectCard(go.dataset.goto);
-        const row = document.querySelector(`.card-row[data-id="${CSS.escape(go.dataset.goto)}"]`);
-        if (row) row.scrollIntoView({ block: "nearest" });
-        return;
-      }
       if (t.closest("[data-close]") || t.id === "scrim") closeDialog();
     });
 
     for (const tab of $$(".tab")) tab.addEventListener("click", () => setView(tab.dataset.view));
-    $("#people-search").addEventListener("input", renderPeople);
-    $("#people-sort").addEventListener("change", renderPeople);
-    $("#people-with-cards").addEventListener("change", renderPeople);
 
     // My cards
     $("#entry-bank").addEventListener("change", renderMyCards);
@@ -736,10 +793,7 @@
 
   // ---------- boot ----------
   fillFilters();
-  renderMe();
-  renderPurposes();
-  resetDraft();
   bind();
   recompute();
-  renderAll();
+  if (db.me) showApp(); else showLogin();
 })();

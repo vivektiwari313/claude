@@ -11,6 +11,39 @@
 </head>
 <body>
 <!--APP-->
+<section class="login" id="login" hidden>
+  <form class="login-card" id="login-form" novalidate>
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <h1>Card Finder</h1>
+        <p class="sub">Borrow a colleague's card benefit. Offer, lounge, EMI, referral.</p>
+      </div>
+    </div>
+    <h2 class="login-title">Log in</h2>
+
+    <div class="field block combo">
+      <label for="login-name">Your name</label>
+      <div class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="login-name" type="text" placeholder="Start typing your name" autocomplete="off" spellcheck="false"
+          role="combobox" aria-expanded="false" aria-controls="login-options" aria-autocomplete="list">
+      </div>
+      <ul class="combo-list" id="login-options" role="listbox" aria-label="Matching people" hidden></ul>
+    </div>
+
+    <div class="field block">
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" placeholder="Password">
+    </div>
+
+    <p class="login-error" id="login-error" role="alert" hidden></p>
+    <button type="submit" class="btn primary login-btn">Log in</button>
+    <p class="note">Prototype login. Everyone shares one password for now.</p>
+  </form>
+</section>
+
+<div id="app" hidden>
 <header class="top">
   <div class="brand">
     <span class="logo" aria-hidden="true"></span>
@@ -19,10 +52,10 @@
       <p class="sub">Borrow a colleague's card benefit. Offer, lounge, EMI, referral.</p>
     </div>
   </div>
-  <label class="whoami">
-    <span>You are</span>
-    <select id="me-select" aria-label="Choose who you are"></select>
-  </label>
+  <div class="session" id="session" hidden>
+    <span class="session-who" id="session-who"></span>
+    <button type="button" class="btn ghost small" id="logout">Log out</button>
+  </div>
 </header>
 
 <nav class="tabs" role="tablist" aria-label="Sections">
@@ -30,14 +63,9 @@
   <button class="tab" role="tab" id="tab-inbox" data-view="inbox" aria-selected="false">Inbox <span class="count-pill" id="inbox-count" hidden></span></button>
   <button class="tab" role="tab" id="tab-sent" data-view="sent" aria-selected="false">Sent <span class="count-pill quiet" id="sent-count" hidden></span></button>
   <button class="tab" role="tab" id="tab-mycards" data-view="mycards" aria-selected="false">My cards</button>
-  <button class="tab" role="tab" id="tab-people" data-view="people" aria-selected="false">People</button>
 </nav>
 
 <main>
-  <div class="banner" id="pick-me" hidden>
-    <strong>Pick your name to start.</strong> Choose it in <em>You are</em> at the top. There's no login in this prototype.
-  </div>
-
   <!-- 1. Request a card (sender) -->
   <section class="view" id="view-request" data-view="request">
     <div class="split">
@@ -121,35 +149,14 @@
     </div>
   </section>
 
-  <!-- 5. People -->
-  <section class="view" id="view-people" data-view="people" hidden>
-    <div class="people-head">
-      <div class="search">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <input id="people-search" type="search" placeholder="Search people" autocomplete="off" aria-label="Search employees">
-      </div>
-      <label class="field">
-        <span>Sort</span>
-        <select id="people-sort">
-          <option value="cards">Most cards</option>
-          <option value="rating">Best rated</option>
-          <option value="name">Name A–Z</option>
-        </select>
-      </label>
-      <label class="toggle">
-        <input type="checkbox" id="people-with-cards">
-        <span>Only people with cards</span>
-      </label>
-    </div>
-    <p class="note" id="power-note"></p>
-    <div class="people-grid" id="people-grid"></div>
-  </section>
 </main>
 
 <footer class="foot">
   <span id="foot-stats"></span>
   <span>Prototype: data is saved in this browser only. Slack messages are previews, not sent. <button class="linkish" id="reset-data">Reset data</button></span>
 </footer>
+
+</div>
 
 <!-- Dialogs -->
 <div class="scrim" id="scrim" hidden></div>

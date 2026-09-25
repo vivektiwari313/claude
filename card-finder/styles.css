@@ -13,6 +13,9 @@
   --gold-line: #e7c46a;
   --ok: #1d7a4a;
   --ok-soft: #dcf1e5;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --danger-line: #f3b8b2;
   --shadow: 0 1px 2px rgba(20, 28, 43, .06), 0 8px 24px rgba(20, 28, 43, .06);
   --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
@@ -35,8 +38,10 @@
     --gold-soft: #3a2f12;
     --gold-line: #7d6425;
     --ok: #5fd39a;
-  --ok-soft: #173a29;
     --ok-soft: #173a29;
+    --danger: #ff8a80;
+    --danger-soft: #3a1714;
+    --danger-line: #6e2a24;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
   }
 }
@@ -56,6 +61,9 @@
   --gold-line: #7d6425;
   --ok: #5fd39a;
   --ok-soft: #173a29;
+  --danger: #ff8a80;
+  --danger-soft: #3a1714;
+  --danger-line: #6e2a24;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
 }
 
@@ -121,7 +129,7 @@ main { max-width: 1200px; margin: 0 auto; }
 
 .filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-top: 12px; }
 .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.field > span { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.field > span, .field > label { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .field select, .field textarea {
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-width: 100%;
 }
@@ -230,27 +238,6 @@ main { max-width: 1200px; margin: 0 auto; }
 .placeholder { padding: 36px 20px; text-align: center; color: var(--muted); }
 .placeholder h2 { color: var(--ink); font-size: 20px; margin-bottom: 6px; }
 
-/* People */
-.people-head { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; }
-.people-head .search { flex: 1 1 280px; }
-.note { color: var(--muted); font-size: 13px; margin: 12px 0; }
-.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-.person {
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px;
-  display: flex; flex-direction: column; gap: 12px;
-}
-.person.is-power { border-color: var(--gold-line); }
-.person-head { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
-.card-count { font: 500 22px/1 var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
-.card-count small { display: block; font: 500 10px/1.4 var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.person-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.person-cards button {
-  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface-2);
-  border-radius: 6px; padding: 4px 8px; font-size: 13px; cursor: pointer; text-align: left;
-}
-.person-cards button:hover { border-color: var(--accent); }
-.person-cards .dot { width: 14px; height: 10px; border-radius: 2px; background: var(--card-bg); flex: none; }
-
 /* Requests */
 .view-head { margin-bottom: 14px; }
 .view-head h2 { font-size: 22px; }
@@ -304,17 +291,47 @@ main { max-width: 1200px; margin: 0 auto; }
 .rating svg { width: 12px; height: 12px; }
 .rating small { color: var(--muted); font-size: 11px; }
 
-/* Identity + banner */
-.whoami { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.whoami > span { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.whoami select {
-  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
-  min-width: 220px; max-width: 100%; font-weight: 600;
+/* Session chip */
+.session { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.session-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.session-who .avatar { width: 34px; height: 34px; font-size: 12px; }
+.session-who .who-name { font-size: 14px; }
+.session-who .who-meta { font-size: 12px; }
+
+/* Login */
+.login { min-height: 100%; display: grid; place-items: center; padding-block: 48px; }
+.login-card {
+  width: min(420px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: var(--shadow); padding: 28px 24px; display: flex; flex-direction: column; gap: 16px;
 }
-.banner {
-  background: var(--gold-soft); border: 1px solid var(--gold-line); color: var(--ink);
-  border-radius: var(--radius); padding: 10px 14px; margin-bottom: 16px; font-size: 14px;
+.login-title { font-size: 20px; margin-top: 4px; }
+.login-card .field input[type="password"] {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; font-size: 16px; width: 100%;
 }
+.login-card .field input[type="password"]:focus { border-color: var(--accent); outline: none; }
+.login-card .search { box-shadow: none; }
+.login-btn { padding: 12px; font-size: 15px; }
+.login-card .note { margin: 0; text-align: center; }
+.login-error {
+  margin: 0; padding: 8px 12px; border-radius: 8px; font-size: 14px;
+  background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-line);
+}
+.combo { position: relative; }
+.combo-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: 4px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+  max-height: 320px; overflow-y: auto;
+}
+.combo-opt {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: center;
+  padding: 7px 8px; border-radius: 8px; cursor: pointer;
+}
+.combo-opt .avatar { width: 34px; height: 34px; font-size: 12px; }
+.combo-opt .who-name { display: block; font-size: 14px; font-weight: 500; }
+.combo-opt .who-name mark { background: var(--gold-soft); color: inherit; border-radius: 2px; }
+.combo-opt .who-meta { font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combo-opt:hover, .combo-opt[aria-selected="true"] { background: var(--accent-soft); }
+.combo-empty { padding: 10px; color: var(--muted); font-size: 14px; }
 
 /* My cards */
 .mycards { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; align-items: start; }
@@ -403,9 +420,9 @@ main { max-width: 1200px; margin: 0 auto; }
   .holder.pickable { grid-template-columns: 18px 40px minmax(0, 1fr); }
   .req { grid-template-columns: 38px minmax(0, 1fr); }
   .req-actions { grid-column: 1 / -1; justify-content: flex-start; }
-  .whoami, .whoami select { width: 100%; min-width: 0; }
+  .session { width: 100%; justify-content: space-between; }
   .tab { padding: 7px 10px; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .card-row, .btn, .person-cards button { transition: background-color .15s, border-color .15s, filter .15s; }
+  .card-row, .btn, .pchip { transition: background-color .15s, border-color .15s, filter .15s; }
 }
