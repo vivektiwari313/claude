@@ -1,0 +1,18 @@
+# Create the app at https://api.slack.com/apps -> Create New App -> From a manifest.
+display_information:
+  name: Card Finder
+  description: Find a GBL colleague who holds the credit card you need.
+  background_color: "#2343d1"
+features:
+  bot_user:
+    display_name: Card Finder
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - im:write
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

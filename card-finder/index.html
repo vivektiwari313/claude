@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Card Finder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!--APP-->
+<section class="login" id="login" hidden>
+  <form class="login-card" id="login-form" novalidate>
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <h1>Card Finder</h1>
+        <p class="sub">Borrow a colleague's card benefit. Offer, lounge, EMI, referral.</p>
+      </div>
+    </div>
+    <h2 class="login-title">Log in</h2>
+
+    <div class="field block combo">
+      <label for="login-name">Your name</label>
+      <div class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="login-name" type="text" placeholder="Start typing your name" autocomplete="off" spellcheck="false"
+          role="combobox" aria-expanded="false" aria-controls="login-options" aria-autocomplete="list">
+      </div>
+      <ul class="combo-list" id="login-options" role="listbox" aria-label="Matching people" hidden></ul>
+    </div>
+
+    <div class="field block">
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" placeholder="Password">
+    </div>
+
+    <p class="login-error" id="login-error" role="alert" hidden></p>
+    <button type="submit" class="btn primary login-btn">Log in</button>
+
+    <div class="or"><span>or</span></div>
+    <button type="button" class="btn slack-btn" id="slack-login">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="#E01E5A" d="M5.04 15.17a2.53 2.53 0 1 1-2.52-2.53h2.52v2.53zm1.27 0a2.53 2.53 0 1 1 5.05 0v6.31a2.53 2.53 0 1 1-5.05 0v-6.31z"/>
+        <path fill="#36C5F0" d="M8.83 5.04a2.53 2.53 0 1 1 2.53-2.52v2.52H8.83zm0 1.27a2.53 2.53 0 1 1 0 5.05H2.52a2.53 2.53 0 1 1 0-5.05h6.31z"/>
+        <path fill="#2EB67D" d="M18.96 8.83a2.53 2.53 0 1 1 2.52 2.53h-2.52V8.83zm-1.27 0a2.53 2.53 0 1 1-5.05 0V2.52a2.53 2.53 0 1 1 5.05 0v6.31z"/>
+        <path fill="#ECB22E" d="M15.17 18.96a2.53 2.53 0 1 1-2.53 2.52v-2.52h2.53zm0-1.27a2.53 2.53 0 1 1 0-5.05h6.31a2.53 2.53 0 1 1 0 5.05h-6.31z"/>
+      </svg>
+      Log in with Slack
+    </button>
+    <p class="note">Prototype login. Everyone shares one password for now.</p>
+    <p class="note sample-note" id="sample-note" hidden>These are sample people. The real GBL list isn't published on this site.</p>
+  </form>
+</section>
+
+<div id="app" hidden>
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <div>
+      <h1>Card Finder</h1>
+      <p class="sub">Borrow a colleague's card benefit. Offer, lounge, EMI, referral.</p>
+    </div>
+  </div>
+  <div class="session" id="session" hidden>
+    <span class="session-who" id="session-who"></span>
+    <button type="button" class="btn ghost small" id="logout">Log out</button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Sections">
+  <button class="tab" role="tab" id="tab-request" data-view="request" aria-selected="true">Request a card</button>
+  <button class="tab" role="tab" id="tab-inbox" data-view="inbox" aria-selected="false">Inbox <span class="count-pill" id="inbox-count" hidden></span></button>
+  <button class="tab" role="tab" id="tab-sent" data-view="sent" aria-selected="false">Sent <span class="count-pill quiet" id="sent-count" hidden></span></button>
+  <button class="tab" role="tab" id="tab-mycards" data-view="mycards" aria-selected="false">My cards</button>
+</nav>
+
+<main>
+  <!-- 1. Request a card (sender) -->
+  <section class="view" id="view-request" data-view="request">
+    <div class="split">
+      <div class="browser">
+        <div class="step">
+          <h2 class="step-title"><span class="step-no">1</span>Purpose</h2>
+          <div class="purpose-chips" id="purpose-chips" role="radiogroup" aria-label="Purpose"></div>
+        </div>
+
+        <div class="step">
+          <h2 class="step-title"><span class="step-no">2</span>Find the card</h2>
+          <div class="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <input id="card-search" type="search" placeholder="Search cards or banks, e.g. Infinia" autocomplete="off" aria-label="Search credit cards">
+          </div>
+          <div class="filters">
+            <label class="field">
+              <span>Bank</span>
+              <select id="issuer-filter"><option value="">All banks</option></select>
+            </label>
+            <label class="field">
+              <span>Category</span>
+              <select id="category-filter"><option value="">All categories</option></select>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="held-only">
+              <span>Only cards someone at GBL has</span>
+            </label>
+          </div>
+          <p class="result-meta" id="result-meta" aria-live="polite"></p>
+          <ul class="card-list" id="card-list" role="listbox" aria-label="Credit cards"></ul>
+        </div>
+      </div>
+
+      <aside class="detail" id="card-detail" aria-live="polite"></aside>
+    </div>
+  </section>
+
+  <!-- 2. Inbox (receiver) -->
+  <section class="view" id="view-inbox" data-view="inbox" hidden>
+    <div class="view-head">
+      <h2>Inbox</h2>
+      <p class="note">Requests colleagues sent you. The first person to accept is matched, and then you use the card together offline.</p>
+    </div>
+    <ul class="req-list" id="inbox-list"></ul>
+  </section>
+
+  <!-- 3. Sent (sender) -->
+  <section class="view" id="view-sent" data-view="sent" hidden>
+    <div class="view-head">
+      <h2>Sent requests</h2>
+      <p class="note">Mark a request done once the card has been used, then rate your colleague.</p>
+    </div>
+    <ul class="req-list" id="sent-list"></ul>
+  </section>
+
+  <!-- 4. My cards (input) -->
+  <section class="view" id="view-mycards" data-view="mycards" hidden>
+    <div class="view-head">
+      <h2>My cards</h2>
+      <p class="note">Pick a bank, tick the cards you hold, and save. Come back any time to update.</p>
+    </div>
+    <div class="mycards">
+      <form class="entry" id="entry-form">
+        <label class="field block">
+          <span>Bank</span>
+          <select id="entry-bank"></select>
+        </label>
+        <fieldset class="checklist" id="entry-cards">
+          <legend class="section-label">Cards</legend>
+        </fieldset>
+        <div class="entry-actions">
+          <span class="note" id="entry-dirty"></span>
+          <button type="submit" class="btn primary" id="entry-save">Save</button>
+        </div>
+      </form>
+      <div class="owned">
+        <h3 class="section-label" id="owned-title">Your saved cards</h3>
+        <ul class="owned-list" id="owned-list"></ul>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <span id="foot-stats"></span>
+  <span><span id="foot-mode"></span> <button class="linkish" id="reset-data">Reset data</button></span>
+</footer>
+
+</div>
+
+<!-- Dialogs -->
+<div class="scrim" id="scrim" hidden></div>
+
+<div class="dialog" id="slack-dialog" role="dialog" aria-modal="true" aria-labelledby="slack-title" hidden>
+  <h2 id="slack-title">Request sent</h2>
+  <p class="dlg-sub" id="slack-sub"></p>
+  <div class="slack">
+    <div class="slack-head" id="slack-head"><span class="slack-bot">CF</span><strong>Card Finder</strong><span class="app-tag">APP</span></div>
+    <p id="slack-text"></p>
+  </div>
+  <p class="slack-status" id="slack-status" role="status"></p>
+  <ul class="slack-results" id="slack-results" hidden></ul>
+  <div class="dlg-actions">
+    <button type="button" class="btn ghost" id="slack-copy">Copy message</button>
+    <button type="button" class="btn ghost" id="slack-close" data-close>Done</button>
+    <button type="button" class="btn primary slack-send" id="slack-send" hidden>Send on Slack</button>
+  </div>
+</div>
+
+<div class="dialog" id="rate-dialog" role="dialog" aria-modal="true" aria-labelledby="rate-title" hidden>
+  <form id="rate-form">
+    <h2 id="rate-title">Rate</h2>
+    <p class="dlg-sub" id="rate-sub"></p>
+    <div class="stars" id="stars" role="radiogroup" aria-label="Rating out of 5"></div>
+    <label class="field block">
+      <span>Comment (optional)</span>
+      <textarea id="rate-comment" rows="2" placeholder="e.g. Quick to reply, card worked first time"></textarea>
+    </label>
+    <div class="dlg-actions">
+      <button type="button" class="btn ghost" data-close>Later</button>
+      <button type="submit" class="btn primary" id="rate-submit" disabled>Submit rating</button>
+    </div>
+  </form>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+<!--/APP-->
+
+<script src="data/cards.js"></script>
+<script src="data/employees.js"></script>
+<!-- Real names, if present locally (git-ignored; see scripts/import_employees.py). -->
+<script src="data/employees.local.js"></script>
+<script src="ops.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

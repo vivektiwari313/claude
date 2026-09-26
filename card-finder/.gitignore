@@ -1,0 +1,5 @@
+data/state.json
+data/state.json.tmp
+# Real employee data never goes in this public repo.
+data/employees.local.js
+data/random_channel_members.json

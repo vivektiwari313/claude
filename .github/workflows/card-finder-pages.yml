@@ -1,0 +1,50 @@
+# Publishes Card Finder (card-finder/) to GitHub Pages.
+# One-time setup: Settings -> Pages -> Build and deployment -> Source: GitHub Actions.
+name: Deploy Card Finder to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "card-finder/**"
+      - ".github/workflows/card-finder-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect the static site
+        # Only the files the browser needs: no server, scripts or source spreadsheets.
+        run: |
+          mkdir -p _site/data
+          cp card-finder/index.html card-finder/app.js card-finder/ops.js card-finder/styles.css _site/
+          cp card-finder/data/cards.js card-finder/data/employees.js _site/data/
+          if [ -d card-finder/images ]; then cp -r card-finder/images _site/; fi
+          # Never publish real employee data, even if it slips into the repo.
+          rm -f _site/data/employees.local.js
+          touch _site/.nojekyll
+          ls -R _site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
