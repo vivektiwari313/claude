@@ -14,6 +14,11 @@ This is a **prototype**: the login is a dummy (search your name, password `12345
 5. Use the card together offline, then **Mark done** in *Sent*.
 6. **Rate** each other 1–5 stars. Averages show next to names.
 
+**Referrals**
+- When you save new cards in *My cards*, Card Finder asks whether to share a referral code, a referral link, or both, for each new card. Skip with *Not now*, and add or edit later with *Add referral code or link* next to any saved card.
+- On a card, **Find a referral before applying** lists colleagues who shared one. **Copy code** copies it; **Open link ↗** opens the bank's page in a new tab (the site's domain is shown first). With no referrals yet, *Ask the holders for one* switches the purpose to "Referral to apply".
+- Only `http(s)` links are accepted (bare domains get `https://` added), codes can't contain spaces, and removing a card removes its referral.
+
 **Receiver side**: *Inbox* lists requests sent to you: Accept or Decline, then rate the sender once it's done.
 
 **Input side**: *My cards*: pick a bank, tick the cards you hold from the checklist, and Save. Come back any time to update.
@@ -44,7 +49,7 @@ SLACK_BOT_TOKEN=xoxb-... APP_URL=https://cardfinder.example.com node server.js
 | --- | --- |
 | `GET /api/config` | `{ "shared": true, "slack": true }`; the app switches to shared data, and to real DMs when a bot token is set |
 | `GET /api/state` | Everyone's cards and requests. The app re-checks every 10 seconds and when you switch back to the tab |
-| `POST /api/op` | One action: `setCards`, `createRequest`, `accept`, `decline`, `done`, `withdraw`, `rate` |
+| `POST /api/op` | One action: `setCards`, `setReferral`, `createRequest`, `accept`, `decline`, `done`, `withdraw`, `rate` |
 
 The rules live in `ops.js`, which both the server and the offline page use. For example, the first person to accept is matched and anyone after gets "Someone else already accepted". Slack DMs go out as part of an action: `createRequest` DMs each receiver, `accept` DMs the sender, `done` DMs the helper. The server writes the text itself from ids it checks against `data/employees.js` and `data/cards.js`. Each DM has a button back to Card Finder (`APP_URL/#inbox` or `#sent`). If Slack fails, the action is still saved and the app says who couldn't be reached.
 

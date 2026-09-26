@@ -9,7 +9,7 @@
   const SESSION_KEY = "cardfinder.me";
   // Prototype login: everyone shares one password.
   const PASSWORD = "12345";
-  const { PURPOSES, applyOp } = window.CardOps;
+  const { PURPOSES, applyOp, cleanLink } = window.CardOps;
 
   const cards = window.CARD_CATALOGUE || [];
   const employees = (window.EMPLOYEES || []).slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -27,15 +27,16 @@
     try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ }
   };
   const saved = read(STORAGE_KEY) || {};
-  const db = { me: read(SESSION_KEY) ?? saved.me ?? "", holdings: saved.holdings || {}, requests: saved.requests || [] };
+  const db = { me: read(SESSION_KEY) ?? saved.me ?? "", holdings: saved.holdings || {}, requests: saved.requests || [], referrals: saved.referrals || {} };
   function save() {
     write(SESSION_KEY, db.me);
-    if (!mode.shared) write(STORAGE_KEY, { holdings: db.holdings, requests: db.requests });
+    if (!mode.shared) write(STORAGE_KEY, { holdings: db.holdings, requests: db.requests, referrals: db.referrals });
   }
   function cleanUp() {
     // Drop anything saved for people who are no longer in the employee list (e.g. the old sample names).
     if (db.me && !empById.has(db.me)) db.me = "";
     for (const id of Object.keys(db.holdings)) if (!empById.has(id)) delete db.holdings[id];
+    for (const id of Object.keys(db.referrals)) if (!empById.has(id)) delete db.referrals[id];
     db.requests = db.requests.filter((r) => empById.has(r.from) && r.to.some((id) => empById.has(id)));
   }
   cleanUp();
@@ -53,6 +54,7 @@
     if (json === lastShared) return false;
     lastShared = json;
     db.holdings = state.holdings || {};
+    db.referrals = state.referrals || {};
     db.requests = state.requests || [];
     cleanUp();
     return true;
@@ -106,6 +108,21 @@
     powerCutoff = counts.length ? Math.max(POWER_USER_MIN_CARDS, counts[Math.min(POWER_USER_TOP_N, counts.length) - 1]) : Infinity;
   }
   const holdersOf = (id) => holdersByCard.get(id) || [];
+
+  // ---------- referrals ----------
+  const refOf = (empId, cardId) => {
+    const r = db.referrals[empId]?.[cardId];
+    return r && cardsOf(empId).includes(cardId) && (r.code || r.link) ? r : null;
+  };
+  // Colleagues (not you) who shared a referral for this card, most recently updated first.
+  const referrersOf = (cardId) => employees
+    .filter((e) => e.id !== db.me && refOf(e.id, cardId))
+    .sort((a, b) => (refOf(b.id, cardId).updatedAt || "").localeCompare(refOf(a.id, cardId).updatedAt || "") || a.name.localeCompare(b.name));
+  // Re-check links before rendering them: only http(s) ever becomes an href.
+  function safeLink(link) {
+    try { return link ? cleanLink(link) : ""; } catch { return ""; }
+  }
+  const hostOf = (href) => { try { return new URL(href).hostname.replace(/^www\./, ""); } catch { return ""; } };
   const isPower = (e) => cardsOf(e.id).length >= powerCutoff;
 
   // Ratings a person has received, from both sides of finished requests.
@@ -203,7 +220,7 @@
   }));
 
   // ---------- UI state ----------
-  const ui = { query: "", issuer: "", category: "", heldOnly: false, selected: null, purpose: "", receivers: new Set(), note: "", view: "request" };
+  const ui = { showRefs: false, query: "", issuer: "", category: "", heldOnly: false, selected: null, purpose: "", receivers: new Set(), note: "", view: "request" };
 
   // ---------- login ----------
   const login = { pick: null, matches: [], active: -1 };
@@ -339,7 +356,7 @@
         ${mini(card)}
         <span class="row-text">
           <span class="row-name">${highlight(card.name, terms)}</span>
-          <span class="row-issuer">${highlight(card.issuer, terms)}</span>
+          <span class="row-issuer">${highlight(card.issuer, terms)}${referrersOf(card.id).length ? ` · <span class="ref-count">${plural(referrersOf(card.id).length, "referral")}</span>` : ""}</span>
         </span>
         <span class="holders ${n ? "has" : ""}">${n ? plural(n, "holder") : "none"}</span>
       </li>`).join("");
@@ -380,6 +397,7 @@
           <div class="p-foot"><span>${esc(card.network || "CREDIT")}</span><span>${holders.length} at GBL</span></div>
         </div>
         <div class="facts">${facts}${link}</div>
+        ${referralSection(card, iHaveIt)}
 
         <div class="step">
           <h3 class="step-title"><span class="step-no">3</span>Choose who to ask</h3>
@@ -412,9 +430,50 @@
       </div>`;
   }
 
+  function referralSection(card, iHaveIt) {
+    const refs = referrersOf(card.id);
+    const mine = iHaveIt ? refOf(db.me, card.id) : null;
+    const share = iHaveIt
+      ? `<button type="button" class="linkish" data-edit-ref="${esc(card.id)}">${mine ? "Edit your referral" : "Share your referral"}</button>`
+      : "";
+    const list = !ui.showRefs ? "" : refs.length ? `
+      <ul class="ref-list">${refs.map((e) => {
+        const r = refOf(e.id, card.id);
+        const href = safeLink(r.link);
+        return `
+        <li class="ref">
+          <div class="ref-who">${avatar(e)}
+            <span class="who"><span class="who-name">${esc(e.name)} ${ratingBadge(e.id)}</span>
+            <span class="who-meta">${esc(e.title || "GBL")}</span></span>
+          </div>
+          <div class="ref-actions">
+            ${r.code ? `<span class="ref-code" title="Referral code">${esc(r.code)}</span>
+              <button type="button" class="btn ghost small" data-copy-code="${esc(r.code)}">Copy code</button>` : ""}
+            ${href ? `<a class="btn primary small" href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow" title="${esc(href)}">Open link ↗</a>` : ""}
+          </div>
+          ${href ? `<p class="ref-leave">Opens <strong>${esc(hostOf(href))}</strong> in a new tab, outside Card Finder.</p>` : ""}
+        </li>`;
+      }).join("")}</ul>`
+      : `<p class="note ref-empty">No one has shared a referral for this card yet.${holdersOf(card.id).some((e) => e.id !== db.me)
+          ? ` <button type="button" class="linkish" id="ask-referral">Ask the holders for one</button>` : ""}</p>`;
+    return `
+      <div class="ref-box${ui.showRefs ? " open" : ""}">
+        <div class="ref-head">
+          <button type="button" class="btn ghost ref-toggle" id="find-ref" aria-expanded="${ui.showRefs}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.6 13.4a1 1 0 0 1 0-1.4l3.4-3.4a1 1 0 1 1 1.4 1.4L12 13.4a1 1 0 0 1-1.4 0zM8 20a5 5 0 0 1-3.5-8.5l2.1-2.1a1 1 0 1 1 1.4 1.4l-2.1 2.1a3 3 0 1 0 4.2 4.2l2.1-2.1a1 1 0 1 1 1.4 1.4L11.5 18.6A5 5 0 0 1 8 20zm9.4-5.4a1 1 0 0 1-.7-1.7l2.1-2.1a3 3 0 1 0-4.2-4.2l-2.1 2.1a1 1 0 1 1-1.4-1.4l2.1-2.1a5 5 0 1 1 7.1 7.1l-2.1 2.1a1 1 0 0 1-.8.2z"/></svg>
+            ${ui.showRefs ? "Hide referrals" : "Find a referral before applying"}
+            <span class="ref-pill">${refs.length}</span>
+          </button>
+          ${share}
+        </div>
+        ${list}
+      </div>`;
+  }
+
   function selectCard(id, { scroll = false } = {}) {
     if (ui.selected !== id) {
       ui.selected = id;
+      ui.showRefs = false;
       // Default: ask everyone who holds the card.
       ui.receivers = new Set(holdersOf(id).filter((e) => e.id !== db.me).map((e) => e.id));
     }
@@ -779,10 +838,96 @@
     const owned = [...draft].map((id) => cardById.get(id)).filter(Boolean)
       .sort((a, b) => a.issuer.localeCompare(b.issuer) || a.name.localeCompare(b.name));
     $("#owned-title").textContent = db.me ? `Your cards (${owned.length})` : "Your cards";
-    $("#owned-list").innerHTML = owned.length ? owned.map((c) => `
-      <li>${mini(c)}<span>${esc(shortLabel(c))}</span>
-      <button type="button" class="icon-btn" data-unown="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">×</button></li>`).join("")
+    const savedIds = new Set(db.me ? cardsOf(db.me) : []);
+    $("#owned-list").innerHTML = owned.length ? owned.map((c) => {
+      const r = savedIds.has(c.id) ? refOf(db.me, c.id) : null;
+      const refLine = !savedIds.has(c.id)
+        ? `<span class="owned-ref muted">Save to add a referral</span>`
+        : r
+          ? `<span class="owned-ref">Referral: ${[r.code ? `<code>${esc(r.code)}</code>` : "", safeLink(r.link) ? esc(hostOf(safeLink(r.link))) : ""].filter(Boolean).join(" · ")}
+              <button type="button" class="linkish" data-edit-ref="${esc(c.id)}">Edit</button></span>`
+          : `<span class="owned-ref"><button type="button" class="linkish" data-edit-ref="${esc(c.id)}">Add referral code or link</button></span>`;
+      return `
+      <li>${mini(c)}<span class="owned-text"><span>${esc(shortLabel(c))}</span>${refLine}</span>
+      <button type="button" class="icon-btn" data-unown="${esc(c.id)}" aria-label="Remove ${esc(c.name)}">×</button></li>`;
+    }).join("")
       : `<li class="empty-inline">No cards yet. Tick the ones you hold and save.</li>`;
+  }
+
+  // ---------- referral dialog ----------
+  let refEdit = null; // card ids being edited
+  function openReferral(cardIds, { afterAdd = false } = {}) {
+    refEdit = cardIds.filter((id) => cardById.has(id));
+    if (!refEdit.length) return;
+    const single = refEdit.length === 1;
+    const first = cardById.get(refEdit[0]);
+    $("#ref-title").textContent = afterAdd
+      ? single ? `Share your ${shortLabel(first)} referral?` : "Share referrals for your new cards?"
+      : `Referral for ${shortLabel(first)}`;
+    $("#ref-sub").textContent = afterAdd
+      ? "Colleagues looking to apply can use your referral code or link. Both are optional, and you can change them later in My cards."
+      : "Add a referral code, a referral link, or both. Leave both empty to stop sharing.";
+    $("#ref-rows").innerHTML = refEdit.map((id, i) => {
+      const c = cardById.get(id);
+      const r = refOf(db.me, id) || {};
+      return `
+      <fieldset class="ref-row" data-ref-card="${esc(id)}">
+        <legend>${mini(c)}<span>${esc(shortLabel(c))}</span></legend>
+        <label class="field">
+          <span>Referral code</span>
+          <input type="text" id="ref-code-${i}" data-ref="code" value="${esc(r.code || "")}" placeholder="e.g. AARTHI500" autocomplete="off" spellcheck="false" maxlength="60">
+        </label>
+        <label class="field">
+          <span>Referral link</span>
+          <input type="url" id="ref-link-${i}" data-ref="link" value="${esc(r.link || "")}" placeholder="https://…" autocomplete="off" spellcheck="false" maxlength="500">
+        </label>
+        <p class="ref-error" role="alert" hidden></p>
+      </fieldset>`;
+    }).join("");
+    $("#ref-remove").hidden = afterAdd || !refOf(db.me, refEdit[0]);
+    $("#ref-skip").textContent = afterAdd ? "Not now" : "Cancel";
+    $("#ref-save").textContent = single ? "Save referral" : "Save referrals";
+    openDialog("#ref-dialog");
+    const firstInput = $("#ref-code-0");
+    if (firstInput) firstInput.focus();
+  }
+
+  async function saveReferrals(clear = false) {
+    if (!refEdit) return;
+    const rows = $$("#ref-rows .ref-row");
+    // Check everything first so no row is half-saved because a later one is invalid.
+    const jobs = [];
+    let bad = false;
+    for (const row of rows) {
+      const code = clear ? "" : row.querySelector('[data-ref="code"]').value.trim();
+      const link = clear ? "" : row.querySelector('[data-ref="link"]').value.trim();
+      const err = row.querySelector(".ref-error");
+      err.hidden = true;
+      try {
+        if (/\s/.test(code)) throw new Error("Referral codes can't contain spaces.");
+        if (link) cleanLink(link);
+      } catch (ex) {
+        err.textContent = ex.message;
+        err.hidden = false;
+        if (!bad) row.querySelector(link && !/\s/.test(code) ? '[data-ref="link"]' : '[data-ref="code"]').focus();
+        bad = true;
+        continue;
+      }
+      const card = row.dataset.refCard;
+      const cur = refOf(db.me, card) || {};
+      if ((cur.code || "") !== code || (cur.link || "") !== (link ? cleanLink(link) : "")) jobs.push({ card, code, link });
+    }
+    if (bad) return;
+    let saved = 0;
+    for (const job of jobs) {
+      const out = await run("setReferral", job);
+      if (!out) return; // run() already explained the problem
+      saved++;
+    }
+    closeDialog();
+    renderMyCards();
+    if (clear) toast("Referral removed.");
+    else if (saved) toast(saved === 1 ? "Referral saved. Colleagues can find it on the card." : `${saved} referrals saved.`);
   }
 
   // ---------- dialogs ----------
@@ -803,6 +948,7 @@
     openId = null;
     rating = null;
     if (was === "#slack-dialog") pendingSlack = null;
+    if (was === "#ref-dialog") refEdit = null;
     if (was === "#rate-dialog" && afterRate) { const next = afterRate; afterRate = null; setTimeout(next, 0); }
   }
 
@@ -834,8 +980,8 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { t.hidden = true; }, 2800);
   }
-  async function copyText(text) {
-    try { await navigator.clipboard.writeText(text); toast("Message copied. Paste it in Slack."); }
+  async function copyText(text, done = "Message copied. Paste it in Slack.") {
+    try { await navigator.clipboard.writeText(text); toast(done); }
     catch { toast("Copy isn't available here. Select the message text and copy it."); }
   }
 
@@ -952,6 +1098,18 @@
     detail.addEventListener("input", (e) => { if (e.target.id === "req-note") ui.note = e.target.value; });
     detail.addEventListener("click", (e) => {
       if (e.target.closest("#send-request")) return sendRequest();
+      if (e.target.closest("#find-ref")) { ui.showRefs = !ui.showRefs; renderDetail(); return; }
+      if (e.target.closest("#ask-referral")) {
+        ui.purpose = "Referral to apply";
+        renderPurposes();
+        renderDetail();
+        const note = $("#req-note");
+        if (note) note.scrollIntoView({ behavior: "smooth", block: "center" });
+        toast("Purpose set to “Referral to apply”. Pick who to ask and send.");
+        return;
+      }
+      const cc = e.target.closest("[data-copy-code]");
+      if (cc) { copyText(cc.dataset.copyCode, "Referral code copied."); return; }
       if (e.target.closest("#toggle-all")) {
         const others = holdersOf(ui.selected).filter((x) => x.id !== db.me).map((x) => x.id);
         ui.receivers = ui.receivers.size === others.length ? new Set() : new Set(others);
@@ -1010,6 +1168,8 @@
         if (r) copyText(slackText(r, r.to.length === 1 ? empById.get(r.to[0]) : null));
         return;
       }
+      const editRef = t.closest("[data-edit-ref]");
+      if (editRef) { openReferral([editRef.dataset.editRef]); return; }
       if (t.closest("[data-close]") || t.id === "scrim") closeDialog();
     });
 
@@ -1032,12 +1192,16 @@
     $("#entry-form").addEventListener("submit", (e) => {
       e.preventDefault();
       if (!db.me) return;
-      const had = cardsOf(db.me).length;
+      const before = new Set(cardsOf(db.me));
+      const had = before.size;
       run("setCards", { cards: [...draft] }).then((out) => {
         if (!out) return;
         resetDraft();
         renderMyCards();
         toast(had ? `Saved. You now have ${plural(draft.size, "card")}.` : `Saved ${plural(draft.size, "card")}. Colleagues can now find you.`);
+        // Newly added cards: ask whether to share a referral for them.
+        const added = out.result.filter((id) => !before.has(id));
+        if (added.length) openReferral(added, { afterAdd: true });
       });
     });
 
@@ -1059,6 +1223,8 @@
 
     $("#slack-copy").addEventListener("click", () => copyText($("#slack-text").textContent));
     $("#slack-send").addEventListener("click", sendPendingSlack);
+    $("#ref-form").addEventListener("submit", (e) => { e.preventDefault(); saveReferrals(); });
+    $("#ref-remove").addEventListener("click", () => saveReferrals(true));
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDialog(); });
 
     // Two-step reset (the viewer can't show confirm() dialogs)

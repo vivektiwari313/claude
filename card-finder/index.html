@@ -205,6 +205,19 @@
   </form>
 </div>
 
+<div class="dialog wide" id="ref-dialog" role="dialog" aria-modal="true" aria-labelledby="ref-title" hidden>
+  <form id="ref-form" novalidate>
+    <h2 id="ref-title">Share your referral?</h2>
+    <p class="dlg-sub" id="ref-sub">Colleagues looking to apply can use your referral code or link. Both are optional, and you can change them later in My cards.</p>
+    <div class="ref-rows" id="ref-rows"></div>
+    <div class="dlg-actions">
+      <button type="button" class="btn ghost" id="ref-remove" hidden>Remove referral</button>
+      <button type="button" class="btn ghost" id="ref-skip" data-close>Not now</button>
+      <button type="submit" class="btn primary" id="ref-save">Save referral</button>
+    </div>
+  </form>
+</div>
+
 <div class="toast" id="toast" role="status" hidden></div>
 <!--/APP-->
 

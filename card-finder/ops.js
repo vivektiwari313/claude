@@ -12,7 +12,26 @@
     "Something else",
   ];
 
-  const emptyState = () => ({ holdings: {}, requests: [] });
+  const emptyState = () => ({ holdings: {}, requests: [], referrals: {} });
+
+  // Referral links must be plain web links; anything else (javascript:, data:, …) is refused.
+  function cleanLink(value) {
+    const link = String(value || "").trim();
+    if (!link) return "";
+    if (link.length > 500) fail("That link is too long.");
+    // "bank.com/refer/abc" -> "https://bank.com/refer/abc"
+    const full = /^[a-z][a-z0-9+.-]*:/i.test(link) ? link : /^[\w-]+(\.[\w-]+)+([/?#]|$)/.test(link) ? `https://${link}` : link;
+    let url;
+    try { url = new URL(full); } catch { fail("Enter the full link, starting with https://"); }
+    if (url.protocol !== "https:" && url.protocol !== "http:") fail("Only web links (https://) can be shared.");
+    return url.href;
+  }
+  function cleanCode(value) {
+    const code = String(value || "").trim();
+    if (code.length > 60) fail("That referral code is too long.");
+    if (/\s/.test(code)) fail("Referral codes can't contain spaces.");
+    return code;
+  }
 
   function fail(message, code = 400) {
     const err = new Error(message);
@@ -33,7 +52,23 @@
         if (ids.length > 100) fail("That's more cards than we can save.");
         if (!ids.every((id) => ctx.cards.has(id))) fail("Some of those cards aren't in the catalogue.");
         state.holdings[by] = ids;
+        // A referral only makes sense for a card you still hold.
+        const refs = (state.referrals || {})[by];
+        if (refs) for (const id of Object.keys(refs)) if (!ids.includes(id)) delete refs[id];
         return { result: ids, notify: [] };
+      }
+
+      case "setReferral": {
+        const card = ctx.cards.get(args.card) || fail("Pick a card from the list.");
+        if (!(state.holdings[by] || []).includes(card.id)) fail("Add this card to My cards before sharing a referral.");
+        const code = cleanCode(args.code);
+        const link = cleanLink(args.link);
+        state.referrals = state.referrals || {};
+        const mine = state.referrals[by] || (state.referrals[by] = {});
+        if (!code && !link) delete mine[card.id];
+        else mine[card.id] = { code, link, updatedAt: ctx.now() };
+        if (!Object.keys(mine).length) delete state.referrals[by];
+        return { result: mine[card.id] || null, notify: [] };
       }
 
       case "createRequest": {
@@ -104,7 +139,7 @@
     }
   }
 
-  const api = { PURPOSES, emptyState, applyOp };
+  const api = { PURPOSES, emptyState, applyOp, cleanLink };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CardOps = api;
 })(this);
