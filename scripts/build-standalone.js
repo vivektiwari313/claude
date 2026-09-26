@@ -18,6 +18,7 @@ const ROOT = path.join(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const OUT_FILE = path.join(ROOT, 'standalone', 'user-search.html');
 const MEMBERS_OUT_FILE = path.join(ROOT, 'private', 'user-search.html');
+const BACKDROP_FILE = path.join(ROOT, 'private', 'background.jpg');
 
 const read = (file) => fs.readFileSync(path.join(PUBLIC_DIR, file), 'utf8');
 
@@ -45,7 +46,15 @@ function embeddedApi(dbFile) {
 `;
 }
 
-function build(dbFile = SAMPLE_FILE) {
+// The background photo is embedded only in builds of imported members; the committed sample
+// build has none.
+function backdropCss(withPhoto) {
+  if (!withPhoto || !fs.existsSync(BACKDROP_FILE)) return '';
+  const data = fs.readFileSync(BACKDROP_FILE).toString('base64');
+  return `<style>:root { --backdrop: url("data:image/jpeg;base64,${data}"); }</style>`;
+}
+
+function build(dbFile = SAMPLE_FILE, { backdrop = false } = {}) {
   let html = read('index.html');
   const scripts = [...html.matchAll(/<script src="\/([\w.-]+)"><\/script>/g)]
     .map(([, file]) => (file === 'api.js' ? embeddedApi(dbFile) : read(file)))
@@ -53,6 +62,10 @@ function build(dbFile = SAMPLE_FILE) {
     .join('\n');
 
   html = html.replace(/<link rel="stylesheet" href="\/styles.css">/, () => `<style>\n${read('styles.css')}</style>`);
+  html = html.replace(/\s*<link rel="stylesheet" href="\/backdrop.css">/, () => {
+    const css = backdropCss(backdrop);
+    return css ? `\n  ${css}` : '';
+  });
   html = html.replace(/(\s*<script src="[^"]+"><\/script>)+/, () => `\n  ${scripts}`);
   if (/src="\/|href="\//.test(html)) throw new Error('Standalone build still references server files');
   return html;
@@ -66,7 +79,7 @@ if (require.main === module) {
   }
   const out = members ? MEMBERS_OUT_FILE : OUT_FILE;
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, build(members ? MEMBERS_FILE : SAMPLE_FILE));
+  fs.writeFileSync(out, build(members ? MEMBERS_FILE : SAMPLE_FILE, { backdrop: members }));
   const kb = Math.round(fs.statSync(out).size / 1024);
   console.log(`Wrote ${path.relative(process.cwd(), out)} (${kb} KB)`);
 }

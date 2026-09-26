@@ -7,6 +7,8 @@ const path = require('node:path');
 const { rankUsers } = require('../public/search');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+// An optional background photo kept out of the repo, like the member data.
+const BACKDROP_FILE = path.join(__dirname, '..', 'private', 'background.jpg');
 const MAX_SUGGESTIONS = 10;
 
 const MIME_TYPES = {
@@ -79,6 +81,18 @@ function createServer(users) {
         return res.end(user.picture);
       }
       return sendJson(res, 200, publicUser(user));
+    }
+
+    if (pathname === '/backdrop.css') {
+      res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
+      return res.end(fs.existsSync(BACKDROP_FILE) ? ':root { --backdrop: url("/background.jpg"); }\n' : '');
+    }
+    if (pathname === '/background.jpg') {
+      return fs.readFile(BACKDROP_FILE, (err, data) => {
+        if (err) return sendJson(res, 404, { error: 'Not found' });
+        res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });
+        res.end(data);
+      });
     }
 
     if (pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'Not found' });

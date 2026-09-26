@@ -61,6 +61,10 @@ the file from about 90 MB to about 10 MB. Photos that weren't
 downloaded are loaded from their URL when the page opens. Anyone with no photo, or whose
 photo can't load, gets a generated picture instead.
 
+To use a background photo, save it as `private/background.jpg` (a JPEG around 1600px wide
+is plenty). The server shows it behind the page, and `build-standalone.js --members` embeds it;
+it is dimmed and softened so the page stays readable.
+
 `private/` is git-ignored so real people's data stays out of the repository; share the built
 `private/user-search.html` file directly rather than committing it.
 
