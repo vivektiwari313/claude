@@ -7,7 +7,6 @@
     "Offer or discount on a purchase",
     "Airport lounge access",
     "EMI or no-cost EMI",
-    "Referral to apply",
     "Advice before applying",
     "Something else",
   ];

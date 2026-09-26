@@ -16,7 +16,7 @@ This is a **prototype**: the login is a dummy (search your name, password `12345
 
 **Referrals**
 - When you save new cards in *My cards*, Card Finder asks whether to share a referral code, a referral link, or both, for each new card. Skip with *Not now*, and add or edit later with *Add referral code or link* next to any saved card.
-- On a card, **Find a referral before applying** lists colleagues who shared one. **Copy code** copies it; **Open link ↗** opens the bank's page in a new tab (the site's domain is shown first). With no referrals yet, *Ask the holders for one* switches the purpose to "Referral to apply".
+- On a card, **Find a referral before applying** lists colleagues who shared one. **Copy code** copies it; **Open link ↗** opens the bank's page in a new tab (the site's domain is shown first). It sits below *Choose who to ask* as a secondary option.
 - Only `http(s)` links are accepted (bare domains get `https://` added), codes can't contain spaces, and removing a card removes its referral.
 
 **Receiver side**: *Inbox* lists requests sent to you: Accept or Decline, then rate the sender once it's done.

@@ -299,13 +299,20 @@ main { max-width: 1200px; margin: 0 auto; }
 
 /* Referrals */
 .ref-count { color: var(--accent); }
-.ref-box { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 12px; background: var(--surface-2); }
-.ref-box.open { border-color: var(--accent); }
-.ref-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
-.ref-toggle { display: inline-flex; align-items: center; gap: 8px; background: var(--surface); }
+/* Secondary to "Choose who to ask": separated by a rule, text-button trigger */
+.ref-box { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 12px; }
+.ref-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.ref-label { color: var(--muted); font-size: 13px; }
+.ref-toggle {
+  display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 4px 0;
+  color: var(--accent); font-weight: 600; font-size: 14px; cursor: pointer;
+}
+.ref-toggle:hover { text-decoration: underline; text-underline-offset: 2px; }
+.ref-head .linkish { margin-left: auto; font-size: 13px; }
 .ref-toggle svg { width: 16px; height: 16px; color: var(--accent); }
 .ref-pill { font: 500 11px/1 var(--mono); padding: 3px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
 .ref-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ref-box.open .ref-list, .ref-box.open .ref-empty { background: var(--surface-2); border-radius: var(--radius); padding: 10px; }
 .ref {
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center;

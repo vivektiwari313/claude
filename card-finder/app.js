@@ -397,7 +397,6 @@
           <div class="p-foot"><span>${esc(card.network || "CREDIT")}</span><span>${holders.length} at GBL</span></div>
         </div>
         <div class="facts">${facts}${link}</div>
-        ${referralSection(card, iHaveIt)}
 
         <div class="step">
           <h3 class="step-title"><span class="step-no">3</span>Choose who to ask</h3>
@@ -427,6 +426,7 @@
             </div>`
           : `<p class="note">${iHaveIt ? "You're the only one at GBL with this card." : "Nobody at GBL has added this card yet."} If you get it, add it in <strong>My cards</strong>.</p>`}
         </div>
+        ${referralSection(card, iHaveIt)}
       </div>`;
   }
 
@@ -454,12 +454,12 @@
           ${href ? `<p class="ref-leave">Opens <strong>${esc(hostOf(href))}</strong> in a new tab, outside Card Finder.</p>` : ""}
         </li>`;
       }).join("")}</ul>`
-      : `<p class="note ref-empty">No one has shared a referral for this card yet.${holdersOf(card.id).some((e) => e.id !== db.me)
-          ? ` <button type="button" class="linkish" id="ask-referral">Ask the holders for one</button>` : ""}</p>`;
+      : `<p class="note ref-empty">No one has shared a referral for this card yet.</p>`;
     return `
       <div class="ref-box${ui.showRefs ? " open" : ""}">
         <div class="ref-head">
-          <button type="button" class="btn ghost ref-toggle" id="find-ref" aria-expanded="${ui.showRefs}">
+          <span class="ref-label">Applying for this card yourself?</span>
+          <button type="button" class="ref-toggle" id="find-ref" aria-expanded="${ui.showRefs}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.6 13.4a1 1 0 0 1 0-1.4l3.4-3.4a1 1 0 1 1 1.4 1.4L12 13.4a1 1 0 0 1-1.4 0zM8 20a5 5 0 0 1-3.5-8.5l2.1-2.1a1 1 0 1 1 1.4 1.4l-2.1 2.1a3 3 0 1 0 4.2 4.2l2.1-2.1a1 1 0 1 1 1.4 1.4L11.5 18.6A5 5 0 0 1 8 20zm9.4-5.4a1 1 0 0 1-.7-1.7l2.1-2.1a3 3 0 1 0-4.2-4.2l-2.1 2.1a1 1 0 1 1-1.4-1.4l2.1-2.1a5 5 0 1 1 7.1 7.1l-2.1 2.1a1 1 0 0 1-.8.2z"/></svg>
             ${ui.showRefs ? "Hide referrals" : "Find a referral before applying"}
             <span class="ref-pill">${refs.length}</span>
@@ -1099,15 +1099,6 @@
     detail.addEventListener("click", (e) => {
       if (e.target.closest("#send-request")) return sendRequest();
       if (e.target.closest("#find-ref")) { ui.showRefs = !ui.showRefs; renderDetail(); return; }
-      if (e.target.closest("#ask-referral")) {
-        ui.purpose = "Referral to apply";
-        renderPurposes();
-        renderDetail();
-        const note = $("#req-note");
-        if (note) note.scrollIntoView({ behavior: "smooth", block: "center" });
-        toast("Purpose set to “Referral to apply”. Pick who to ask and send.");
-        return;
-      }
       const cc = e.target.closest("[data-copy-code]");
       if (cc) { copyText(cc.dataset.copyCode, "Referral code copied."); return; }
       if (e.target.closest("#toggle-all")) {
