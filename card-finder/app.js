@@ -831,7 +831,7 @@
         </div>`;
       fetch.hidden = false;
       fetch.disabled = !upsell.selected.size;
-      fetch.textContent = "Yes, fetch report";
+      fetch.textContent = "Yes, Fetch Credit Report";
       cancel.textContent = "Later";
       return;
     }
