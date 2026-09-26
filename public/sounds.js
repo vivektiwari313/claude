@@ -83,13 +83,21 @@
   }
 
   const once = {
-    // `hit` is 1..max for hits that add cracks, 0 once the picture can't crack further.
-    hammer(hit) {
+    // `hits` is how many times the picture has been hit; the sound escalates with it.
+    hammer(hits, { shattering = false, bigSmash = false } = {}) {
       if (!audio()) return;
-      tone({ from: 170, to: 45, peak: 0.9, decay: 0.18 });
+      tone({ from: bigSmash ? 140 : 170, to: 40, peak: bigSmash ? 1 : 0.9, decay: bigSmash ? 0.3 : 0.18 });
       noiseBurst({ type: 'lowpass', freq: 1400, to: 300, peak: 0.6, decay: 0.09 });
       noiseBurst({ type: 'highpass', freq: 3000, peak: 0.25, decay: 0.02 }); // Metal on glass.
-      if (hit) glassCrack(2 + hit * 2);
+      glassCrack(2 + Math.min(hits, 5) * 2);
+      if (shattering) {
+        // Glass breaking away, then pieces tinkling down.
+        noiseBurst({ type: 'highpass', freq: 2500, to: 6000, peak: bigSmash ? 0.5 : 0.3, decay: bigSmash ? 0.35 : 0.18 });
+        const tinkles = bigSmash ? 14 : 3 + Math.min(hits - 5, 8);
+        for (let i = 0; i < tinkles; i++) {
+          tone({ at: rand(0.05, bigSmash ? 0.7 : 0.4), type: 'triangle', from: rand(2500, 6000), peak: rand(0.03, 0.08), attack: 0.001, decay: rand(0.04, 0.12) });
+        }
+      }
     },
 
     whoosh(duration) {

@@ -2,14 +2,18 @@
 // they leave. app.js calls WeaponFX.setup() once, then setWeapon() and reset().
 //
 // Marks are drawn on two canvases over the photo, in a 260x260 logical space that is scaled
-// to the picture's real size: `perm` holds cracks and bullet holes (kept until reset), `temp`
+// to the picture's real size: `perm` holds lasting damage (kept until reset), `temp`
 // holds everything that fades on its own and is redrawn every animation frame while visible.
 'use strict';
 
 (function () {
   // Tunables. Times are in milliseconds.
   const CONFIG = {
-    hammerMaxHits: 5, // Hits that add cracks; later hits still swing but add none.
+    // The hammer never stops doing damage; it escalates with the number of hits.
+    hammerCrackGrowthHits: 5, // Each crack cluster is bigger than the last, up to this hit.
+    hammerShatterFrom: 6, // From this hit on, each hit also knocks out a chunk of glass.
+    hammerBigSmashEvery: 10, // Every Nth hit cracks the whole picture.
+    hammerMaxDarkening: 0.45, // How dark repeated hits can make the picture (0 to 1).
     markLifetimeMs: 3000, // How long shoe prints and egg splats stay.
     strokeLingerMs: 3000, // How long chain saw and pen marks stay after the drag ends.
     fadeMs: 500, // Temporary marks fade out over the last part of their lifetime.
@@ -89,8 +93,9 @@
   let weapon = null;
   let generation = 0; // Bumped by reset() so in-flight animations don't land afterwards.
   let hammerHits = 0;
-  let cracks = [];
-  let shots = [];
+  let damage = []; // Lasting damage in the order it happened: cracks, chips, shading, shots.
+  let darkening = 0;
+  let shards = []; // Glass falling off after a chip.
   let marks = []; // Shoe prints and egg splats.
   let particles = []; // Chain saw sawdust.
   let groups = {}; // Chain saw and pen strokes.
@@ -216,7 +221,7 @@
         lines.push({ pts: [pa, mid, pb], w: 0.9 });
       }
     }
-    return { x, y, level, lines };
+    return { kind: 'cracks', x, y, level, lines };
   }
 
   function drawCracks(ctx, c) {
@@ -240,6 +245,79 @@
       ctx.translate(0.6, 0.6);
       ctx.strokeStyle = 'rgba(255,255,255,0.8)';
       ctx.lineWidth = line.w * 0.6;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function makeChip(x, y, size) {
+    const corners = 7 + Math.floor(rand(0, 4));
+    const edge = Array.from({ length: corners }, (_, i) => {
+      const a = (i / corners) * Math.PI * 2 + rand(-0.2, 0.2);
+      const r = size * rand(0.55, 1.15);
+      return { x: x + Math.cos(a) * r, y: y + Math.sin(a) * r };
+    });
+    return { kind: 'chip', x, y, size, edge };
+  }
+
+  function drawChip(ctx, c) {
+    ctx.beginPath();
+    c.edge.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath();
+    const depth = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.size * 1.2);
+    depth.addColorStop(0, '#020304');
+    depth.addColorStop(1, '#1b1f26');
+    ctx.fillStyle = depth;
+    ctx.fill();
+    // Bright, broken glass edge.
+    ctx.lineJoin = 'miter';
+    ctx.strokeStyle = 'rgba(235,242,250,0.85)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.6;
+    ctx.save();
+    ctx.translate(1, 1);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function dropShards(chip, count) {
+    const now = performance.now();
+    for (let i = 0; i < count; i++) {
+      const size = rand(2.5, 3 + chip.size * 0.35);
+      const corners = 3 + Math.floor(rand(0, 2));
+      shards.push({
+        x: chip.x + rand(-chip.size, chip.size) * 0.6,
+        y: chip.y + rand(-chip.size, chip.size) * 0.6,
+        vx: rand(-0.06, 0.06),
+        vy: rand(-0.08, 0.02),
+        spin: rand(-0.012, 0.012),
+        pts: Array.from({ length: corners }, (_, j) => {
+          const a = (j / corners) * Math.PI * 2 + rand(-0.4, 0.4);
+          return [Math.cos(a) * size * rand(0.5, 1), Math.sin(a) * size * rand(0.5, 1)];
+        }),
+        born: now,
+        life: rand(700, 1100),
+      });
+    }
+  }
+
+  function drawShards(ctx, now) {
+    shards = shards.filter((s) => now - s.born < s.life);
+    for (const s of shards) {
+      const t = now - s.born;
+      ctx.save();
+      ctx.globalAlpha = 1 - t / s.life;
+      ctx.translate(s.x + s.vx * t, s.y + s.vy * t + 0.0004 * t * t);
+      ctx.rotate(s.spin * t);
+      ctx.beginPath();
+      s.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(210,225,240,0.45)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 0.7;
       ctx.stroke();
       ctx.restore();
     }
@@ -617,10 +695,32 @@
 
   // ---- Rendering -----------------------------------------------------------------------------
 
+  function drawDamage(ctx, d) {
+    if (d.kind === 'cracks') drawCracks(ctx, d);
+    else if (d.kind === 'chip') drawChip(ctx, d);
+    else if (d.kind === 'shot') for (const h of d.holes) drawHole(ctx, h);
+    else if (d.kind === 'shade') {
+      // Grime and bruising that builds up over the whole picture.
+      const g = ctx.createRadialGradient(d.x, d.y, 10, d.x, d.y, SIZE);
+      g.addColorStop(0, `rgba(20,14,10,${d.alpha * 1.4})`);
+      g.addColorStop(1, `rgba(10,8,6,${d.alpha})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, SIZE, SIZE);
+    }
+  }
+
   function renderPerm() {
     resetTransform(permCtx);
-    for (const c of cracks) drawCracks(permCtx, c);
-    for (const shot of shots) for (const h of shot) drawHole(permCtx, h);
+    for (const d of damage) drawDamage(permCtx, d);
+  }
+
+  // Adds damage on top of what's already drawn, without redrawing it all.
+  function addDamage(...items) {
+    permCtx.setTransform(pxPerUnit, 0, 0, pxPerUnit, 0, 0);
+    for (const d of items) {
+      damage.push(d);
+      drawDamage(permCtx, d);
+    }
   }
 
   // Draws the temporary layer; returns whether anything is still animating.
@@ -636,8 +736,9 @@
     const penAlpha = groupAlpha(pen, now);
     if (penAlpha) drawPenStrokes(tempCtx, pen.strokes, penAlpha);
     drawParticles(tempCtx, now);
+    drawShards(tempCtx, now);
 
-    return marks.length > 0 || particles.length > 0 || sawAlpha > 0 || penAlpha > 0;
+    return marks.length > 0 || particles.length > 0 || shards.length > 0 || sawAlpha > 0 || penAlpha > 0;
   }
 
   function frame(now) {
@@ -719,14 +820,29 @@
       if (weapon && weapon.name === 'Hammer') stage.style.cursor = HAMMER_RAISED;
     }, 140);
 
-    const cracked = hammerHits < CONFIG.hammerMaxHits;
-    if (cracked) {
-      hammerHits++;
-      cracks.push(makeCracks(p.x, p.y, hammerHits));
-      renderPerm();
+    hammerHits++;
+    const n = hammerHits;
+    const bigSmash = n % CONFIG.hammerBigSmashEvery === 0;
+    const shattering = n >= CONFIG.hammerShatterFrom;
+
+    // Cracks grow over the first hits; after that the chunks of glass carry the damage.
+    const level = bigSmash ? 9 : n <= CONFIG.hammerCrackGrowthHits ? n : 2;
+    const hit = [makeCracks(p.x, p.y, level)];
+    if (shattering) {
+      const beyond = n - CONFIG.hammerShatterFrom;
+      const chip = makeChip(p.x, p.y, Math.min(7 + beyond * 1.2, 26) * (bigSmash ? 1.4 : 1));
+      hit.push(chip);
+      dropShards(chip, bigSmash ? 16 : 5 + Math.min(beyond, 8));
+      requestRender();
+      if (darkening < CONFIG.hammerMaxDarkening) {
+        const alpha = Math.min(0.03, CONFIG.hammerMaxDarkening - darkening);
+        darkening += alpha;
+        hit.push({ kind: 'shade', x: p.x, y: p.y, alpha });
+      }
     }
-    if (sound) sound.hammer(cracked ? hammerHits : 0);
-    shake(5);
+    addDamage(...hit);
+    if (sound) sound.hammer(n, { shattering, bigSmash });
+    shake(bigSmash ? 11 : shattering ? 7 : 5);
   }
 
   function throwShoe(p) {
@@ -774,8 +890,7 @@
   }
 
   function fireGun(p) {
-    shots.push(makeShot(p.x, p.y));
-    renderPerm();
+    addDamage({ kind: 'shot', holes: makeShot(p.x, p.y) });
     if (sound) sound.gun();
     shake(6);
     if (reducedMotion.matches) return;
@@ -888,8 +1003,9 @@
     generation++;
     endDrag();
     hammerHits = 0;
-    cracks = [];
-    shots = [];
+    damage = [];
+    darkening = 0;
+    shards = [];
     marks = [];
     particles = [];
     groups = newGroups();

@@ -10,7 +10,7 @@ A small web app with a searchable directory of 400 users.
 
   | Weapon | Effect |
   | --- | --- |
-  | Hammer | The pointer becomes a big hammer that swings on each click, cracking the picture. Each hit adds more cracks, up to 5 hits. |
+  | Hammer | The pointer becomes a big hammer that swings on each click. There's no limit: the first hits crack the picture, each more than the last; from the 6th, chunks of glass break out and fall away while the picture gets more battered; every 10th hit smashes the whole picture. |
   | Shoe | Flies in and leaves a muddy shoe print for 3 seconds. |
   | Egg | Splatters on the picture; the mess stays for 3 seconds. |
   | Chain Saw | Drag to cut the picture. Cuts stay until 3 seconds after you let go. |
@@ -19,7 +19,7 @@ A small web app with a searchable directory of 400 users.
 
   Starting a new chain saw or pen drag within those 3 seconds keeps the earlier marks. The
   **Reset** button clears everything, and so does picking a different user. Every weapon has a
-  sound effect, generated in the browser so no audio files are needed; the speaker button next to **Reset** mutes them. The limits and
+  sound effect, generated in the browser so no audio files are needed; the speaker button next to **Reset** mutes them. The hammer stages and
   timings are in `CONFIG` at the top of `public/effects.js`; the sounds are in `public/sounds.js`.
 
 ## Quick start: no install needed
