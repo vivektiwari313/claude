@@ -356,7 +356,7 @@
         ${mini(card)}
         <span class="row-text">
           <span class="row-name">${highlight(card.name, terms)}</span>
-          <span class="row-issuer">${highlight(card.issuer, terms)}${referrersOf(card.id).length ? ` · <span class="ref-count">${plural(referrersOf(card.id).length, "referral")}</span>` : ""}</span>
+          <span class="row-issuer">${highlight(card.issuer, terms)}${referrersOf(card.id).length && !cardsOf(db.me).includes(card.id) ? ` · <span class="ref-count">${plural(referrersOf(card.id).length, "referral")}</span>` : ""}</span>
         </span>
         <span class="holders ${n ? "has" : ""}">${n ? plural(n, "holder") : "none"}</span>
       </li>`).join("");
@@ -431,11 +431,9 @@
   }
 
   function referralSection(card, iHaveIt) {
+    // Referrals help people apply for a card, so holders don't see this. They manage their own in My cards.
+    if (iHaveIt) return "";
     const refs = referrersOf(card.id);
-    const mine = iHaveIt ? refOf(db.me, card.id) : null;
-    const share = iHaveIt
-      ? `<button type="button" class="linkish" data-edit-ref="${esc(card.id)}">${mine ? "Edit your referral" : "Share your referral"}</button>`
-      : "";
     const list = !ui.showRefs ? "" : refs.length ? `
       <ul class="ref-list">${refs.map((e) => {
         const r = refOf(e.id, card.id);
@@ -464,7 +462,6 @@
             ${ui.showRefs ? "Hide referrals" : "Find a referral before applying"}
             <span class="ref-pill">${refs.length}</span>
           </button>
-          ${share}
         </div>
         ${list}
       </div>`;
