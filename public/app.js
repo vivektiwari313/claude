@@ -183,9 +183,18 @@ function onWeaponClick(btn, weapon) {
 resetButton.addEventListener('click', () => window.WeaponFX.reset());
 
 const soundButton = document.getElementById('sound-button');
+const SPEAKER = '<path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke-linejoin="round"/>';
+const SOUND_ICONS = {
+  on: `${SPEAKER}<path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" stroke-linecap="round"/>`,
+  off: `${SPEAKER}<path d="M16.5 9.5l5 5M21.5 9.5l-5 5" stroke-linecap="round"/>`,
+};
+
 function showSoundState() {
   const on = window.WeaponSounds.isEnabled();
-  soundButton.textContent = on ? 'Sound on' : 'Sound off';
+  const label = on ? 'Sound on' : 'Sound off';
+  soundButton.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">${SOUND_ICONS[on ? 'on' : 'off']}</svg>`;
+  soundButton.setAttribute('aria-label', label);
+  soundButton.title = label;
   soundButton.setAttribute('aria-pressed', String(on));
 }
 soundButton.addEventListener('click', () => {

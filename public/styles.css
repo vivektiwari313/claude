@@ -261,6 +261,17 @@ h1 {
 .control-button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .control-button[aria-pressed="false"] { color: var(--muted); }
 
+/* Round icon-only control, the same height as the Reset button. */
+.icon-button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.icon-button svg { width: 22px; height: 22px; }
+
 .empty-state {
   margin-top: 48px;
   text-align: center;
