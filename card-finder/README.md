@@ -11,6 +11,8 @@ This is a **prototype**: the login is a dummy (search your name, password `12345
 2. **Find the card**: running search across all 238 Indian credit cards (name, bank, short names like "Amex", aliases), or browse by bank and category.
 3. **Choose who to ask**: everyone holding the card is listed and ticked by default. Send, and each gets a Slack DM from the Card Finder app (a preview when Slack isn't connected).
    Before anything is sent, a review step shows one message per person: swipe or use the arrows (or ←/→ and the dots) to move between people and edit any message. Dots mark edited messages, and *Reset to suggested* undoes an edit. Each person gets their own message, and the Sent list keeps them (*Copy messages*).
+   After sending, the success screen shows all purposes with the ones you've asked for before highlighted, and asks: *Do you want to fetch your credit report for credit card recommendations for the above purposes?* (a soft pull that doesn't affect the score). **Later** closes it. **Yes, fetch report** shows a 3-second loading step, then 3 recommended cards; picking one opens it with *Find a referral* expanded.
+   Prototype: no report is fetched. The 3 cards come from a seed made of the user and the selected purposes (so the same person + purposes always gets the same cards), favour card types that fit each purpose, skip cards you hold, and prefer three different banks.
 4. The **first colleague to accept** is matched; the request closes for everyone else, and the sender gets a Slack DM.
 5. Use the card together offline, then **Mark done** in *Sent*.
 6. **Rate** each other 1–5 stars. Averages show next to names.

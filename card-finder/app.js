@@ -622,9 +622,12 @@
   // ---------- composer: one editable message per person ----------
   // A horizontal track of slides (swipe, arrows, dots, or ←/→). Used for new requests,
   // for Slack notes after Accept / Mark done, and to copy a sent request's messages.
-  const composer = { items: [], defaults: [], index: 0, onConfirm: null, busy: false, done: false };
+  const composer = { kind: "", items: [], defaults: [], index: 0, onConfirm: null, busy: false, done: false };
 
-  function openComposer({ title, sub, items, confirmLabel, cancelLabel = "Cancel", onConfirm = null, readOnly = false, status = "" }) {
+  function openComposer({ kind = "", title, sub, items, confirmLabel, cancelLabel = "Cancel", onConfirm = null, readOnly = false, status = "" }) {
+    composer.kind = kind;
+    $("#compose-dialog").classList.remove("sent");
+    resetUpsell();
     composer.items = items.map((x) => ({ ...x }));
     composer.defaults = items.map((x) => x.suggested ?? x.message);
     composer.index = 0;
@@ -719,6 +722,7 @@
       return;
     }
     composer.done = true;
+    $("#compose-dialog").classList.add("sent");
     btn.hidden = true;
     $("#compose-cancel").textContent = "Done";
     $("#compose-title").textContent = res.title;
@@ -739,6 +743,166 @@
     // Land on the first failure, if any, so it's the first thing they see.
     const firstBad = composer.items.findIndex((it) => it.result === "err");
     composerGo(firstBad >= 0 ? firstBad : composer.index, false);
+    if (composer.kind === "request") showUpsell();
+  }
+
+  // ---------- after a request: credit report → card recommendations ----------
+  // Prototype: no report is fetched. After a 3-second wait we pick 3 cards with a seed made of
+  // the user and the chosen purposes, so the same person + purposes always gets the same cards.
+  const PURPOSE_FIT = {
+    "Offer or discount on a purchase": ["Cashback / Everyday", "Cashback / Co-branded", "Co-branded / Rewards", "Fuel / Co-branded"],
+    "Airport lounge access": ["Premium", "Travel", "Travel / Co-branded", "Charge / Rewards"],
+    "EMI or no-cost EMI": ["Rewards / General", "Rewards", "Cashback / Everyday"],
+  };
+  const upsell = { phase: "", selected: new Set(), timer: 0 };
+
+  function resetUpsell() {
+    clearTimeout(upsell.timer);
+    upsell.phase = "";
+    $("#compose-extra").hidden = true;
+    $("#compose-extra").innerHTML = "";
+    $("#compose-fetch").hidden = true;
+  }
+
+  function pastPurposes() {
+    return new Set(db.requests.filter((r) => r.from === db.me).map((r) => r.purpose).filter((p) => PURPOSES.includes(p)));
+  }
+
+  function hash(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function seeded(seed) { // mulberry32
+    return () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function recommend(purposes) {
+    const chosen = [...purposes].sort();
+    const rand = seeded(hash(`${db.me}|${chosen.join("|")}`));
+    const held = new Set(cardsOf(db.me));
+    const scored = cards
+      .filter((c) => !held.has(c.id))
+      .map((c) => {
+        const fits = chosen.filter((p) => (PURPOSE_FIT[p] || []).includes(c.category));
+        return { c, fits, score: fits.length, tie: rand() };
+      })
+      .sort((a, b) => b.score - a.score || a.tie - b.tie);
+    // Prefer three different banks.
+    const picks = [];
+    for (const x of scored) {
+      if (picks.length === 3) break;
+      if (!picks.some((p) => p.c.issuer === x.c.issuer)) picks.push(x);
+    }
+    for (const x of scored) if (picks.length < 3 && !picks.includes(x)) picks.push(x);
+    return picks;
+  }
+
+  function showUpsell() {
+    upsell.phase = "ask";
+    upsell.selected = pastPurposes();
+    renderUpsell();
+  }
+
+  function renderUpsell() {
+    const box = $("#compose-extra");
+    box.hidden = false;
+    const fetch = $("#compose-fetch");
+    const cancel = $("#compose-cancel");
+    const chips = (interactive) => PURPOSES.map((p) => `
+      <button type="button" class="pchip small" role="checkbox" aria-checked="${upsell.selected.has(p)}" data-upsell-purpose="${esc(p)}" ${interactive ? "" : "disabled"}>${esc(p)}</button>`).join("");
+
+    if (upsell.phase === "ask") {
+      box.innerHTML = `
+        <div class="upsell">
+          <h3 class="section-label">Your purposes</h3>
+          <div class="purpose-chips">${chips(true)}</div>
+          <p class="note">Highlighted: what you've asked colleagues for so far. Tap to change.</p>
+          <p class="upsell-q">Do you want to fetch your credit report for credit card recommendations for the above purposes?</p>
+          <p class="soft-pull">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5l-8-3zm-1.2 14.2-3.5-3.5 1.4-1.4 2.1 2.1 4.9-4.9 1.4 1.4-6.3 6.3z"/></svg>
+            This is a soft pull. It will not affect your credit score.
+          </p>
+        </div>`;
+      fetch.hidden = false;
+      fetch.disabled = !upsell.selected.size;
+      fetch.textContent = "Yes, fetch report";
+      cancel.textContent = "Later";
+      return;
+    }
+    if (upsell.phase === "loading") {
+      box.innerHTML = `
+        <div class="upsell loading" role="status">
+          <div class="report-loader" aria-hidden="true">
+            <div class="rl-card"><span class="rl-chip"></span><span class="rl-scan"></span></div>
+            <div class="rl-lines"><span></span><span></span><span></span></div>
+          </div>
+          <p class="upsell-q">Fetching your credit report<span class="rl-dots"><span>.</span><span>.</span><span>.</span></span></p>
+          <p class="note">Matching cards to ${esc([...upsell.selected].join(", ").toLowerCase())}.</p>
+        </div>`;
+      fetch.hidden = true;
+      cancel.textContent = "Cancel";
+      return;
+    }
+    // results
+    const picks = recommend(upsell.selected);
+    box.innerHTML = `
+      <div class="upsell">
+        <div class="upsell-head">
+          <h3 class="section-label">Recommended for you</h3>
+          <button type="button" class="linkish" id="upsell-change">Change purposes</button>
+        </div>
+        <div class="purpose-chips">${chips(false)}</div>
+        <p class="note">Pick a card to find a colleague's referral before you apply.</p>
+        <ul class="recs">${picks.map(({ c, fits }) => {
+          const n = referrersOf(c.id).length;
+          return `
+          <li>
+            <button type="button" class="rec" data-rec-card="${esc(c.id)}" aria-label="Find a referral for ${esc(shortLabel(c))}">
+              <span class="plastic rec-card${c.image ? " has-photo" : ""}" style="--card-bg:${cardBg(c)}">
+                ${cardImg(c)}
+                <span class="p-issuer">${esc(shortIssuer(c))}</span>
+                <span class="chip"></span>
+              </span>
+              <span class="rec-body">
+                <span class="rec-name">${esc(shortLabel(c))}</span>
+                <span class="rec-meta">${esc(c.category)}</span>
+                <span class="rec-fit">${fits.length ? `Good for ${esc(fits.join(", ").toLowerCase())}` : "Good all-round rewards"}</span>
+                <span class="rec-cta">Find a referral${n ? ` · ${n} available` : ""} →</span>
+              </span>
+            </button>
+          </li>`;
+        }).join("")}</ul>
+        <p class="note">Prototype: these are sample picks. No credit report was fetched.</p>
+      </div>`;
+    fetch.hidden = true;
+    cancel.textContent = "Later";
+  }
+
+  function startFetch() {
+    if (upsell.phase !== "ask" || !upsell.selected.size) return;
+    upsell.phase = "loading";
+    renderUpsell();
+    upsell.timer = setTimeout(() => { upsell.phase = "results"; renderUpsell(); }, 3000);
+  }
+
+  function openRecommended(cardId) {
+    closeDialog();
+    ui.query = ""; $("#card-search").value = "";
+    ui.issuer = ""; $("#issuer-filter").value = "";
+    ui.category = ""; $("#category-filter").value = "";
+    ui.heldOnly = false; $("#held-only").checked = false;
+    setView("request");
+    selectCard(cardId);
+    ui.showRefs = true; // straight into "Find a referral"
+    renderDetail();
+    document.querySelector(`.card-row[data-id="${CSS.escape(cardId)}"]`)?.scrollIntoView({ block: "nearest" });
+    $("#card-detail").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   const listNames = (ids) => {
@@ -772,6 +936,7 @@
         ? "Each person gets their message as a Slack DM from your own Slack account."
         : "Slack isn't connected here, so after saving you can copy each message and send it yourself.";
     openComposer({
+      kind: "request",
       title: to.length > 1 ? `Review ${to.length} messages` : `Message to ${firstName(empById.get(to[0]))}`,
       sub: `${to.length > 1 ? "Swipe or use the arrows to check each person's message and edit any of them. " : ""}${how}`,
       items,
@@ -1029,7 +1194,7 @@
     $("#scrim").hidden = true;
     openId = null;
     rating = null;
-    if (was === "#compose-dialog") { composer.onConfirm = null; composer.items = []; }
+    if (was === "#compose-dialog") { composer.onConfirm = null; composer.items = []; resetUpsell(); }
     if (was === "#ref-dialog") refEdit = null;
     if (was === "#rate-dialog" && afterRate) { const next = afterRate; afterRate = null; setTimeout(next, 0); }
   }
@@ -1302,6 +1467,19 @@
     // Composer
     const track = $("#compose-track");
     $("#compose-confirm").addEventListener("click", confirmComposer);
+    $("#compose-fetch").addEventListener("click", startFetch);
+    $("#compose-extra").addEventListener("click", (e) => {
+      const chip = e.target.closest("[data-upsell-purpose]");
+      if (chip && upsell.phase === "ask") {
+        const p = chip.dataset.upsellPurpose;
+        if (upsell.selected.has(p)) upsell.selected.delete(p); else upsell.selected.add(p);
+        renderUpsell();
+        return;
+      }
+      if (e.target.closest("#upsell-change")) { upsell.phase = "ask"; renderUpsell(); return; }
+      const rec = e.target.closest("[data-rec-card]");
+      if (rec) openRecommended(rec.dataset.recCard);
+    });
     $("#compose-prev").addEventListener("click", () => composerGo(composer.index - 1));
     $("#compose-next").addEventListener("click", () => composerGo(composer.index + 1));
     $("#compose-dots").addEventListener("click", (e) => { const d = e.target.closest("[data-dot]"); if (d) composerGo(Number(d.dataset.dot)); });
