@@ -80,9 +80,23 @@ function buildMessages(body) {
     if (!to.length || to.length > 50) throw new Error("Pick between 1 and 50 people.");
     if (!PURPOSES.has(body.purpose)) throw new Error("Unknown purpose.");
     const note = String(body.note || "").slice(0, 500).trim();
+    const custom = body.messages && typeof body.messages === "object" ? body.messages : {};
     return to.map((id) => {
       const rcpt = employees.get(id);
       if (!rcpt || id === from.id) throw new Error("Unknown receiver.");
+      const own = typeof custom[id] === "string" ? custom[id].trim().slice(0, 2000) : "";
+      if (own) {
+        // The sender's own words, with who sent it and what it's about above them.
+        return {
+          channel: id,
+          text: `${from.name} is asking for your ${cardName(card)} (${body.purpose})`,
+          blocks: [
+            { type: "context", elements: [{ type: "mrkdwn", text: `*${mrkdwn(from.name)}* via Card Finder · ${mrkdwn(cardName(card))} · ${mrkdwn(body.purpose)}` }] },
+            { type: "section", text: { type: "mrkdwn", text: mrkdwn(own) } },
+            openButton("Accept or decline", "inbox"),
+          ],
+        };
+      }
       const lines = [
         `Hi ${mrkdwn(first(rcpt))}, *${mrkdwn(from.name)}* is looking for someone with the *${mrkdwn(cardName(card))}*.`,
         `*Purpose:* ${mrkdwn(body.purpose)}`,

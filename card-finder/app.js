@@ -220,7 +220,8 @@
   }));
 
   // ---------- UI state ----------
-  const ui = { showRefs: false, query: "", issuer: "", category: "", heldOnly: false, selected: null, purpose: "", receivers: new Set(), note: "", view: "request" };
+  // revealed: referral codes shown this session, as "employeeId:cardId"
+  const ui = { revealed: new Set(), showRefs: false, query: "", issuer: "", category: "", heldOnly: false, selected: null, purpose: "", receivers: new Set(), note: "", view: "request" };
 
   // ---------- login ----------
   const login = { pick: null, matches: [], active: -1 };
@@ -445,8 +446,9 @@
             <span class="who-meta">${esc(e.title || "GBL")}</span></span>
           </div>
           <div class="ref-actions">
-            ${r.code ? `<span class="ref-code" title="Referral code">${esc(r.code)}</span>
-              <button type="button" class="btn ghost small" data-copy-code="${esc(r.code)}">Copy code</button>` : ""}
+            ${!r.code ? "" : ui.revealed.has(`${e.id}:${card.id}`)
+              ? `<span class="ref-code" title="Referral code (copied)">${esc(r.code)}</span>`
+              : `<button type="button" class="btn ghost small" data-show-code="${esc(e.id)}">Show code</button>`}
             ${href ? `<a class="btn primary small" href="${esc(href)}" target="_blank" rel="noopener noreferrer nofollow" title="${esc(href)}">Open link ↗</a>` : ""}
           </div>
           ${href ? `<p class="ref-leave">Opens <strong>${esc(hostOf(href))}</strong> in a new tab, outside Card Finder.</p>` : ""}
@@ -481,12 +483,21 @@
     }
   }
 
-  function slackText(req, receiver) {
+  // Suggested message for one person; the sender can edit it before sending.
+  function defaultMessage(kind, req, to) {
     const card = cardById.get(req.card);
-    return `Hi ${receiver ? firstName(receiver) : "there"}, ${nameOf(req.from)} is looking for someone with the ${card.issuer} ${card.name}.\n` +
-      `Purpose: ${req.purpose}${req.note ? `\nDetails: ${req.note}` : ""}\n` +
-      `Can you help? Accept or decline in Card Finder. The first person to accept is matched.`;
+    const cardName = `${card.issuer} ${card.name}`;
+    const first = firstName(empById.get(to));
+    if (kind === "accepted") return `Hi ${first}, I can help with the ${cardName} (${req.purpose.toLowerCase()}). Let's sort out the details here.`;
+    if (kind === "done") return `Thanks for helping with the ${cardName}, ${first}! I've marked it done in Card Finder. Please rate me there when you get a moment.`;
+    return [
+      `Hi ${first}, I'm looking for someone with the ${cardName} and saw on Card Finder that you have it.`,
+      `Purpose: ${req.purpose}`,
+      req.note ? `Details: ${req.note}` : "",
+      `Could you help? Reply here, or accept in Card Finder.${req.to.length > 1 ? ` I've asked ${req.to.length} people; the first to accept is matched.` : ""}`,
+    ].filter(Boolean).join("\n");
   }
+  const messageFor = (req, to) => req.messages?.[to] || defaultMessage("request", req, to);
 
   // ---------- server + Slack ----------
   async function detectServer() {
@@ -608,123 +619,197 @@
     return results;
   }
 
-  // Slack messages in standard markdown for the connector, one per recipient.
-  function connectorMessages(kind, req) {
-    const card = cardById.get(req.card);
-    const cardName = `${card.issuer} ${card.name}`;
-    const link = APP_LINK ? `\n<${APP_LINK}|Open Card Finder>` : "";
-    if (kind === "request") {
-      return req.to.map((id) => ({
-        to: id,
-        message: [
-          `Hi ${firstName(empById.get(id))}, I'm looking for someone with the **${cardName}** and saw on Card Finder that you have it.`,
-          `**Purpose:** ${req.purpose}`,
-          req.note ? `**Details:** ${req.note}` : "",
-          `Could you help? Reply here, or accept in Card Finder.${req.to.length > 1 ? ` I've asked ${req.to.length} people; the first to accept is matched.` : ""}${link}`,
-        ].filter(Boolean).join("\n"),
-      }));
-    }
-    if (kind === "accepted") {
-      return [{ to: req.from, message: `Hi ${firstName(empById.get(req.from))}, I can help with the **${cardName}** (${req.purpose.toLowerCase()}). Let's sort out the details here.${link}` }];
-    }
-    // done: the sender tells the helper
-    return [{ to: req.matchedWith, message: `Thanks for helping with the **${cardName}**, ${firstName(empById.get(req.matchedWith))}! I've marked it done in Card Finder. Please rate me there when you get a moment.${link}` }];
+  // ---------- composer: one editable message per person ----------
+  // A horizontal track of slides (swipe, arrows, dots, or ←/→). Used for new requests,
+  // for Slack notes after Accept / Mark done, and to copy a sent request's messages.
+  const composer = { items: [], defaults: [], index: 0, onConfirm: null, busy: false, done: false };
+
+  function openComposer({ title, sub, items, confirmLabel, cancelLabel = "Cancel", onConfirm = null, readOnly = false, status = "" }) {
+    composer.items = items.map((x) => ({ ...x }));
+    composer.defaults = items.map((x) => x.suggested ?? x.message);
+    composer.index = 0;
+    composer.onConfirm = onConfirm;
+    composer.busy = false;
+    composer.done = readOnly;
+    $("#compose-title").textContent = title;
+    $("#compose-sub").textContent = sub || "";
+    $("#compose-status").className = "slack-status";
+    $("#compose-status").textContent = status;
+    $("#compose-cancel").textContent = cancelLabel;
+    const confirm = $("#compose-confirm");
+    confirm.hidden = readOnly || !onConfirm;
+    confirm.disabled = false;
+    confirm.textContent = confirmLabel || "Send";
+    const multi = composer.items.length > 1;
+    $("#compose-dialog").classList.toggle("single", !multi);
+    $("#compose-track").innerHTML = composer.items.map((it, i) => `
+      <div class="slide" data-slide="${i}" role="group" aria-label="Message to ${esc(nameOf(it.to))}">
+        <textarea id="compose-msg-${i}" rows="7" aria-label="Message to ${esc(nameOf(it.to))}" ${readOnly ? "readonly" : ""}>${esc(it.message)}</textarea>
+        <div class="slide-foot">
+          <span class="slide-result" id="compose-result-${i}"></span>
+          <button type="button" class="linkish" data-reset="${i}" hidden>Reset to suggested</button>
+          <button type="button" class="btn ghost small" data-copy-slide="${i}">Copy</button>
+        </div>
+      </div>`).join("");
+    $("#compose-dots").innerHTML = multi ? composer.items.map((it, i) => `
+      <button type="button" class="dot-btn" role="tab" data-dot="${i}" aria-label="${esc(nameOf(it.to))}" title="${esc(nameOf(it.to))}"></button>`).join("") : "";
+    openDialog("#compose-dialog");
+    $("#compose-track").scrollLeft = 0;
+    renderComposerNav();
+    if (!readOnly) $("#compose-msg-0")?.focus({ preventScroll: true });
   }
 
-  // Dialog step: preview the DM(s), then send from the viewer's Slack on click.
-  let pendingSlack = null; // { kind, req, items }
-  function offerConnector(kind, req) {
-    const items = connectorMessages(kind, req);
-    pendingSlack = { kind, req, items };
-    const names = items.map((i) => firstName(empById.get(i.to)));
-    const me = empById.get(db.me);
-    $("#slack-head").innerHTML = `${avatar(me)}<strong>${esc(me.name)}</strong><span class="app-tag">YOU</span>`;
-    $("#slack-text").textContent = items[0].message.replace(/\*\*/g, "").replace(/<([^|>]+)\|([^>]+)>/g, "$2: $1");
-    $("#slack-sub").textContent = items.length > 1 ? `One DM each to ${names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", ")}` : `DM to ${names[0]}`;
-    const status = $("#slack-status");
-    status.className = "slack-status";
-    status.textContent = "Sends from your own Slack account, using your Slack connector in claude.ai.";
-    $("#slack-results").hidden = true;
-    const send = $("#slack-send");
-    send.hidden = false;
-    send.disabled = false;
-    send.textContent = items.length > 1 ? `Send ${items.length} DMs on Slack` : "Send on Slack";
-    $("#slack-close").textContent = "Not now";
+  function renderComposerNav() {
+    const n = composer.items.length;
+    const i = composer.index;
+    const it = composer.items[i];
+    if (!it) return;
+    const e = empById.get(it.to);
+    $("#compose-who").innerHTML = `${e ? avatar(e) : ""}
+      <span class="who"><span class="who-name">${esc(nameOf(it.to))}</span>
+      <span class="who-meta">${n > 1 ? `${i + 1} of ${n}` : esc(e?.title || "GBL")}${n > 1 && e?.title ? ` · ${esc(e.title)}` : ""}</span></span>`;
+    $("#compose-prev").disabled = i === 0;
+    $("#compose-next").disabled = i === n - 1;
+    $("#compose-prev").hidden = $("#compose-next").hidden = n < 2;
+    $$("#compose-dots .dot-btn").forEach((d, k) => {
+      d.setAttribute("aria-selected", String(k === i));
+      d.classList.toggle("edited", composer.items[k].message.trim() !== composer.defaults[k].trim());
+      d.classList.toggle("sent", composer.items[k].result === "ok");
+      d.classList.toggle("failed", composer.items[k].result === "err");
+    });
+    $$("#compose-track [data-reset]").forEach((b) => {
+      const k = Number(b.dataset.reset);
+      b.hidden = composer.done || composer.items[k].message.trim() === composer.defaults[k].trim();
+    });
   }
 
-  async function sendPendingSlack() {
-    if (!pendingSlack || !slackMcp) return;
-    const { items } = pendingSlack;
-    const send = $("#slack-send");
-    const status = $("#slack-status");
-    send.disabled = true;
-    send.textContent = "Sending…";
-    status.className = "slack-status";
-    status.textContent = `Sending to ${plural(items.length, "person", "people")}…`;
-    const results = await sendWithConnector(items);
-    const ok = results.filter((r) => r.ok);
+  function composerGo(i, smooth = true) {
+    const n = composer.items.length;
+    composer.index = Math.max(0, Math.min(n - 1, i));
+    const track = $("#compose-track");
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    track.scrollTo({ left: composer.index * track.clientWidth, behavior: smooth && !reduce ? "smooth" : "auto" });
+    renderComposerNav();
+  }
+
+  async function confirmComposer() {
+    if (composer.busy || composer.done || !composer.onConfirm) return;
+    const empty = composer.items.findIndex((it) => !it.message.trim());
+    if (empty >= 0) {
+      composerGo(empty);
+      const st = $("#compose-status");
+      st.className = "slack-status err";
+      st.textContent = `Write a message for ${firstName(empById.get(composer.items[empty].to))}, or press Reset to use the suggested one.`;
+      $(`#compose-msg-${empty}`)?.focus({ preventScroll: true });
+      return;
+    }
+    composer.busy = true;
+    const btn = $("#compose-confirm");
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    $$("#compose-track textarea").forEach((t) => t.readOnly = true);
+    const res = await composer.onConfirm(composer.items.map((it) => ({ to: it.to, message: it.message.trim() })));
+    composer.busy = false;
+    if (!res) {
+      // Nothing saved (run() already explained why): let them fix it and try again.
+      btn.disabled = false;
+      btn.textContent = label;
+      $$("#compose-track textarea").forEach((t) => t.readOnly = false);
+      return;
+    }
+    composer.done = true;
+    btn.hidden = true;
+    $("#compose-cancel").textContent = "Done";
+    $("#compose-title").textContent = res.title;
+    $("#compose-sub").textContent = composer.items.length > 1 ? "Swipe or use the arrows to see what each person got. Copy any message to send it again." : "";
+    const st = $("#compose-status");
+    st.className = `slack-status ${res.cls || ""}`;
+    st.textContent = res.status;
+    for (const r of res.results || []) {
+      const k = composer.items.findIndex((it) => it.to === r.to);
+      if (k < 0) continue;
+      composer.items[k].result = r.ok ? "ok" : "err";
+      const el = $(`#compose-result-${k}`);
+      el.className = `slide-result ${r.ok ? "ok" : "err"}`;
+      el.innerHTML = r.ok
+        ? `✓ Sent${r.link ? ` · <a href="${esc(r.link)}" target="_blank" rel="noopener">Open in Slack ↗</a>` : ""}`
+        : `✕ ${esc(r.skipped ? "Not sent" : r.error || "Not sent")}`;
+    }
+    // Land on the first failure, if any, so it's the first thing they see.
+    const firstBad = composer.items.findIndex((it) => it.result === "err");
+    composerGo(firstBad >= 0 ? firstBad : composer.index, false);
+  }
+
+  const listNames = (ids) => {
+    const names = ids.map((id) => firstName(empById.get(id)));
+    return names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", ");
+  };
+  const withLink = (text) => (APP_LINK ? `${text}\n<${APP_LINK}|Open Card Finder>` : text);
+
+  // Sum up Slack delivery for the composer's done state.
+  function slackSummary(results, how) {
+    const ok = results.filter((r) => r.ok).map((r) => firstName(empById.get(r.to)));
     const bad = results.filter((r) => !r.ok);
-    pendingSlack = null;
-    send.hidden = true;
-    $("#slack-close").textContent = "Done";
-    $("#slack-title").textContent = !bad.length ? "Sent on Slack" : ok.length ? "Partly sent on Slack" : "Not sent on Slack";
-    status.className = `slack-status ${bad.length ? "err" : "ok"}`;
-    status.textContent = !bad.length
-      ? `Sent from your Slack to ${ok.map((r) => firstName(empById.get(r.to))).join(", ")}.`
-      : bad.find((r) => !r.skipped)?.error || "Not sent.";
-    const list = $("#slack-results");
-    list.hidden = results.length < 2 && !ok.some((r) => r.link);
-    list.innerHTML = results.map((r) => {
-      const e = empById.get(r.to);
-      return `<li class="${r.ok ? "ok" : "err"}"><span>${r.ok ? "✓" : "✕"}</span> ${esc(e ? e.name : r.to)}${r.ok && r.link ? ` · <a href="${esc(r.link)}" target="_blank" rel="noopener">Open in Slack ↗</a>` : r.ok ? "" : ` · ${esc(r.skipped ? "not sent" : r.error)}`}</li>`;
-    }).join("");
+    if (!bad.length) return { title: "Sent on Slack", cls: "ok", status: `Sent to ${ok.join(", ")}${how}.`, results };
+    return {
+      title: ok.length ? "Partly sent on Slack" : "Not sent on Slack",
+      cls: "err",
+      status: `${ok.length ? `Sent to ${ok.join(", ")}. ` : ""}${(bad.find((r) => !r.skipped)?.error || "Some messages weren't sent").replace(/([^.!?])$/, "$1.")} The request is still saved; you can copy the messages that didn't go.`,
+      results,
+    };
   }
 
-  async function sendRequest() {
+  function sendRequest() {
     const card = cardById.get(ui.selected);
     if (!card || !db.me || !ui.purpose || !ui.receivers.size) return;
-    const btn = $("#send-request");
-    if (btn) btn.disabled = true;
-    const out = await run("createRequest", { card: card.id, purpose: ui.purpose, note: ui.note, to: [...ui.receivers] });
-    if (!out) return;
-    const req = out.result;
-    ui.note = "";
-    renderDetail();
-    const names = req.to.map((id) => firstName(empById.get(id)));
-    const list = names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", ");
-    $("#slack-text").textContent = slackText(req, req.to.length === 1 ? empById.get(req.to[0]) : null);
-    const status = $("#slack-status");
-    status.className = "slack-status";
-    $("#slack-send").hidden = true;
-    $("#slack-results").hidden = true;
-    $("#slack-close").textContent = "Done";
-    $("#slack-head").innerHTML = `<span class="slack-bot">CF</span><strong>Card Finder</strong><span class="app-tag">APP</span>`;
-    if (!out.slack && viaConnector()) {
-      $("#slack-title").textContent = "Request saved. Send it on Slack?";
-      offerConnector("request", req);
-    } else if (!out.slack) {
-      $("#slack-title").textContent = "Request sent";
-      $("#slack-sub").textContent = `Slack DM to ${list}`;
-      status.textContent = mode.shared
-        ? `${list} can see it in their Card Finder inbox. Slack isn't connected, so copy this message to ping them.`
-        : "Slack isn't connected here, so this is a preview. Copy it and send it yourself, or run Card Finder with its server to send it automatically.";
-    } else {
-      const sentTo = out.slack.results.filter((r) => r.ok).map((r) => firstName(empById.get(r.to)));
-      const failed = out.slack.results.filter((r) => !r.ok);
-      $("#slack-sub").textContent = `DM to ${list}`;
-      if (out.slack.ok) {
-        $("#slack-title").textContent = "Sent on Slack";
-        status.classList.add("ok");
-        status.textContent = `Delivered to ${sentTo.join(", ")}. They'll get a DM from the Card Finder app.`;
-      } else {
-        $("#slack-title").textContent = sentTo.length ? "Partly sent on Slack" : "Not sent on Slack";
-        status.classList.add("err");
-        status.textContent = failed.length
-          ? `${sentTo.length ? `Sent to ${sentTo.join(", ")}. ` : ""}Couldn't reach ${failed.map((r) => `${firstName(empById.get(r.to))} (${slackError(r.error)})`).join(", ")}. The request is still in their inbox; copy the message to ping them.`
-          : `Couldn't send: ${out.slack.error}. The request is still in their inbox; copy the message to ping them.`;
-      }
-    }
-    openDialog("#slack-dialog");
+    const to = [...ui.receivers];
+    const draftReq = { card: card.id, purpose: ui.purpose, note: ui.note.trim(), to };
+    const items = to.map((id) => ({ to: id, message: defaultMessage("request", draftReq, id) }));
+    const how = mode.slack
+      ? "Each person gets their message as a Slack DM from the Card Finder app."
+      : viaConnector()
+        ? "Each person gets their message as a Slack DM from your own Slack account."
+        : "Slack isn't connected here, so after saving you can copy each message and send it yourself.";
+    openComposer({
+      title: to.length > 1 ? `Review ${to.length} messages` : `Message to ${firstName(empById.get(to[0]))}`,
+      sub: `${to.length > 1 ? "Swipe or use the arrows to check each person's message and edit any of them. " : ""}${how}`,
+      items,
+      confirmLabel: mode.slack || viaConnector() ? (to.length > 1 ? `Send ${to.length} messages` : "Send message") : "Save request",
+      onConfirm: async (edited) => {
+        const messages = Object.fromEntries(edited.map((it) => [it.to, it.message]));
+        const out = await run("createRequest", { ...draftReq, messages });
+        if (!out) return null;
+        ui.note = "";
+        renderDetail();
+        if (out.slack) {
+          const rs = (out.slack.results || []).map((r) => ({ ...r, error: r.ok ? undefined : slackError(r.error) }));
+          if (!rs.length) return { title: "Request saved", cls: "err", status: `Couldn't send on Slack: ${out.slack.error}. It's in their Card Finder inbox; copy the messages to ping them.` };
+          return slackSummary(rs, " from the Card Finder app");
+        }
+        if (viaConnector()) return slackSummary(await sendWithConnector(edited.map((it) => ({ to: it.to, message: withLink(it.message) }))), " from your Slack");
+        return {
+          title: "Request saved",
+          status: mode.shared
+            ? `${listNames(to)} can see it in their Card Finder inbox. Slack isn't connected, so copy each message to ping them.`
+            : "Slack isn't connected here. Copy each message and send it yourself.",
+        };
+      },
+    });
+  }
+
+  // After Accept / Mark done, offer a Slack note through the viewer's connector.
+  function offerConnector(kind, req) {
+    const to = kind === "accepted" ? req.from : req.matchedWith;
+    const text = defaultMessage(kind, req, to);
+    openComposer({
+      title: kind === "accepted" ? `Accepted. Tell ${firstName(empById.get(to))} on Slack?` : `Let ${firstName(empById.get(to))} know on Slack?`,
+      sub: "Sends from your own Slack account. Edit the message if you like.",
+      items: [{ to, message: text }],
+      confirmLabel: "Send on Slack",
+      cancelLabel: "Not now",
+      onConfirm: async (edited) => slackSummary(await sendWithConnector(edited.map((it) => ({ to: it.to, message: withLink(it.message) }))), " from your Slack"),
+    });
   }
 
   // ---------- 2. inbox ----------
@@ -787,7 +872,7 @@
     if (!items.length) { ul.innerHTML = `<li class="empty"><strong>You haven't sent any requests</strong>Go to Request a card, pick a purpose and a card, and ask the people who hold it.</li>`; return; }
     ul.innerHTML = items.map((r) => {
       const asked = r.to.map((id) => esc(firstName(empById.get(id)))).join(", ");
-      const copy = `<button class="btn ghost small" data-copy="${esc(r.id)}">Copy Slack message</button>`;
+      const copy = `<button class="btn ghost small" data-copy="${esc(r.id)}">${r.to.length > 1 ? "Copy messages" : "Copy message"}</button>`;
       if (r.status === "cancelled") return reqCard(r, `<span class="pill muted">Withdrawn</span> <span class="note-inline">Asked ${asked}</span>`, "");
       if (r.status === "open") {
         const left = r.to.length - r.declined.length;
@@ -944,7 +1029,7 @@
     $("#scrim").hidden = true;
     openId = null;
     rating = null;
-    if (was === "#slack-dialog") pendingSlack = null;
+    if (was === "#compose-dialog") { composer.onConfirm = null; composer.items = []; }
     if (was === "#ref-dialog") refEdit = null;
     if (was === "#rate-dialog" && afterRate) { const next = afterRate; afterRate = null; setTimeout(next, 0); }
   }
@@ -977,9 +1062,9 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { t.hidden = true; }, 2800);
   }
-  async function copyText(text, done = "Message copied. Paste it in Slack.") {
+  async function copyText(text, done = "Message copied. Paste it in Slack.", failed = "Copy isn't available here. Select the message text and copy it.") {
     try { await navigator.clipboard.writeText(text); toast(done); }
-    catch { toast("Copy isn't available here. Select the message text and copy it."); }
+    catch { toast(failed); }
   }
 
   // ---------- views ----------
@@ -1096,8 +1181,16 @@
     detail.addEventListener("click", (e) => {
       if (e.target.closest("#send-request")) return sendRequest();
       if (e.target.closest("#find-ref")) { ui.showRefs = !ui.showRefs; renderDetail(); return; }
-      const cc = e.target.closest("[data-copy-code]");
-      if (cc) { copyText(cc.dataset.copyCode, "Referral code copied."); return; }
+      const show = e.target.closest("[data-show-code]");
+      if (show) {
+        // Reveal the code in place of the button and copy it straight away.
+        const code = refOf(show.dataset.showCode, ui.selected)?.code;
+        if (!code) return;
+        ui.revealed.add(`${show.dataset.showCode}:${ui.selected}`);
+        renderDetail();
+        copyText(code, "Referral code copied.", "Code shown. Copy isn't available here, so select the code to copy it.");
+        return;
+      }
       if (e.target.closest("#toggle-all")) {
         const others = holdersOf(ui.selected).filter((x) => x.id !== db.me).map((x) => x.id);
         ui.receivers = ui.receivers.size === others.length ? new Set() : new Set(others);
@@ -1112,12 +1205,7 @@
         run("accept", { id: accept.dataset.accept }).then((out) => {
           if (!out) return;
           const from = firstName(empById.get(out.result.from));
-          if (!out.slack && viaConnector()) {
-            $("#slack-title").textContent = `Accepted. Tell ${from} on Slack?`;
-            offerConnector("accepted", out.result);
-            openDialog("#slack-dialog");
-            return;
-          }
+          if (!out.slack && viaConnector()) return offerConnector("accepted", out.result);
           toast(out.slack && !out.slack.ok
             ? `Accepted, but the Slack note to ${from} failed (${slackError(out.slack.results[0]?.error || out.slack.error)}).`
             : `Accepted. You're matched with ${from}. Use the card together offline.`);
@@ -1134,11 +1222,7 @@
         run("done", { id: done.dataset.done }).then((out) => {
           if (!out) return;
           // Rate first; offer the Slack thank-you after the rating dialog closes.
-          if (!out.slack && viaConnector()) afterRate = () => {
-            $("#slack-title").textContent = `Let ${firstName(empById.get(out.result.matchedWith))} know on Slack?`;
-            offerConnector("done", out.result);
-            openDialog("#slack-dialog");
-          };
+          if (!out.slack && viaConnector()) afterRate = () => offerConnector("done", out.result);
           openRate(out.result.id, "sender");
         });
         return;
@@ -1153,7 +1237,13 @@
       const copy = t.closest("[data-copy]");
       if (copy) {
         const r = db.requests.find((x) => x.id === copy.dataset.copy);
-        if (r) copyText(slackText(r, r.to.length === 1 ? empById.get(r.to[0]) : null));
+        if (r) openComposer({
+          title: r.to.length > 1 ? "Messages for this request" : `Message to ${firstName(empById.get(r.to[0]))}`,
+          sub: r.to.length > 1 ? "Swipe or use the arrows to see each person's message." : "",
+          items: r.to.map((id) => ({ to: id, message: messageFor(r, id) })),
+          readOnly: true,
+          cancelLabel: "Done",
+        });
         return;
       }
       const editRef = t.closest("[data-edit-ref]");
@@ -1209,8 +1299,45 @@
       run("rate", { id: req.id, stars, comment }).then((out) => out && toast("Thanks. Your rating is saved."));
     });
 
-    $("#slack-copy").addEventListener("click", () => copyText($("#slack-text").textContent));
-    $("#slack-send").addEventListener("click", sendPendingSlack);
+    // Composer
+    const track = $("#compose-track");
+    $("#compose-confirm").addEventListener("click", confirmComposer);
+    $("#compose-prev").addEventListener("click", () => composerGo(composer.index - 1));
+    $("#compose-next").addEventListener("click", () => composerGo(composer.index + 1));
+    $("#compose-dots").addEventListener("click", (e) => { const d = e.target.closest("[data-dot]"); if (d) composerGo(Number(d.dataset.dot)); });
+    let scrollRaf = 0;
+    track.addEventListener("scroll", () => {
+      cancelAnimationFrame(scrollRaf);
+      scrollRaf = requestAnimationFrame(() => {
+        const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+        if (i !== composer.index && composer.items[i]) { composer.index = i; renderComposerNav(); }
+      });
+    });
+    track.addEventListener("input", (e) => {
+      const m = e.target.id && e.target.id.match(/^compose-msg-(\d+)$/);
+      if (!m) return;
+      composer.items[Number(m[1])].message = e.target.value;
+      $("#compose-status").className = "slack-status";
+      renderComposerNav();
+    });
+    track.addEventListener("click", (e) => {
+      const reset = e.target.closest("[data-reset]");
+      if (reset) {
+        const k = Number(reset.dataset.reset);
+        composer.items[k].message = composer.defaults[k];
+        $(`#compose-msg-${k}`).value = composer.defaults[k];
+        renderComposerNav();
+        return;
+      }
+      const cp = e.target.closest("[data-copy-slide]");
+      if (cp) copyText(composer.items[Number(cp.dataset.copySlide)].message.trim(), "Message copied. Paste it in Slack.");
+    });
+    $("#compose-dialog").addEventListener("keydown", (e) => {
+      if (e.target.tagName === "TEXTAREA" || composer.items.length < 2) return;
+      if (e.key === "ArrowRight") { e.preventDefault(); composerGo(composer.index + 1); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); composerGo(composer.index - 1); }
+    });
+    window.addEventListener("resize", () => { if (openId === "#compose-dialog") composerGo(composer.index, false); });
     $("#ref-form").addEventListener("submit", (e) => { e.preventDefault(); saveReferrals(); });
     $("#ref-remove").addEventListener("click", () => saveReferrals(true));
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDialog(); });

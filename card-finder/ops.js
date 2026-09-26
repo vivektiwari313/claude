@@ -78,12 +78,19 @@
         if (to.length > 50) fail("You can ask up to 50 people at once.");
         if (!to.every((id) => ctx.employees.has(id))) fail("Some of those people aren't at GBL.");
         const note = String(args.note || "").trim().slice(0, 500);
+        // Optional message per person, written or edited by the sender.
+        const messages = {};
+        const given = args.messages && typeof args.messages === "object" ? args.messages : {};
+        for (const id of to) {
+          const text = typeof given[id] === "string" ? given[id].trim().slice(0, 2000) : "";
+          if (text) messages[id] = text;
+        }
         const req = {
-          id: ctx.newId(), from: by, card: card.id, purpose: args.purpose, note,
+          id: ctx.newId(), from: by, card: card.id, purpose: args.purpose, note, messages,
           to, declined: [], status: "open", matchedWith: null, createdAt: ctx.now(), ratings: {},
         };
         state.requests.push(req);
-        return { result: req, notify: [{ type: "request", from: by, to, cardId: card.id, purpose: req.purpose, note }] };
+        return { result: req, notify: [{ type: "request", from: by, to, cardId: card.id, purpose: req.purpose, note, messages }] };
       }
 
       case "accept": {

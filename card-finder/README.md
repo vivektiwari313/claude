@@ -10,13 +10,14 @@ This is a **prototype**: the login is a dummy (search your name, password `12345
 1. **Purpose**: pick why you need the card. Click it again to clear it.
 2. **Find the card**: running search across all 238 Indian credit cards (name, bank, short names like "Amex", aliases), or browse by bank and category.
 3. **Choose who to ask**: everyone holding the card is listed and ticked by default. Send, and each gets a Slack DM from the Card Finder app (a preview when Slack isn't connected).
+   Before anything is sent, a review step shows one message per person: swipe or use the arrows (or ←/→ and the dots) to move between people and edit any message. Dots mark edited messages, and *Reset to suggested* undoes an edit. Each person gets their own message, and the Sent list keeps them (*Copy messages*).
 4. The **first colleague to accept** is matched; the request closes for everyone else, and the sender gets a Slack DM.
 5. Use the card together offline, then **Mark done** in *Sent*.
 6. **Rate** each other 1–5 stars. Averages show next to names.
 
 **Referrals**
 - When you save new cards in *My cards*, Card Finder asks whether to share a referral code, a referral link, or both, for each new card. Skip with *Not now*, and add or edit later with *Add referral code or link* next to any saved card.
-- On a card, **Find a referral before applying** lists colleagues who shared one. **Copy code** copies it; **Open link ↗** opens the bank's page in a new tab (the site's domain is shown first). It sits below *Choose who to ask* as a secondary option, and only shows for cards you don't hold.
+- On a card, **Find a referral before applying** lists colleagues who shared one. **Show code** reveals the code and copies it in one click; **Open link ↗** opens the bank's page in a new tab (the site's domain is shown first). It sits below *Choose who to ask* as a secondary option, and only shows for cards you don't hold.
 - Only `http(s)` links are accepted (bare domains get `https://` added), codes can't contain spaces, and removing a card removes its referral.
 
 **Receiver side**: *Inbox* lists requests sent to you: Accept or Decline, then rate the sender once it's done.

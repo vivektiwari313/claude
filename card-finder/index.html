@@ -172,21 +172,29 @@
 <!-- Dialogs -->
 <div class="scrim" id="scrim" hidden></div>
 
-<div class="dialog" id="slack-dialog" role="dialog" aria-modal="true" aria-labelledby="slack-title" hidden>
-  <h2 id="slack-title">Request sent</h2>
-  <p class="dlg-sub" id="slack-sub"></p>
-  <div class="slack">
-    <div class="slack-head" id="slack-head"><span class="slack-bot">CF</span><strong>Card Finder</strong><span class="app-tag">APP</span></div>
-    <p id="slack-text"></p>
+<div class="dialog wide" id="compose-dialog" role="dialog" aria-modal="true" aria-labelledby="compose-title" hidden>
+  <h2 id="compose-title">Review your request</h2>
+  <p class="dlg-sub" id="compose-sub"></p>
+  <div class="composer">
+    <div class="composer-nav">
+      <button type="button" class="nav-btn" id="compose-prev" aria-label="Previous person">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="composer-who" id="compose-who" aria-live="polite"></div>
+      <button type="button" class="nav-btn" id="compose-next" aria-label="Next person">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="composer-track" id="compose-track" tabindex="-1"></div>
+    <div class="composer-dots" id="compose-dots" role="tablist" aria-label="People"></div>
   </div>
-  <p class="slack-status" id="slack-status" role="status"></p>
-  <ul class="slack-results" id="slack-results" hidden></ul>
+  <p class="slack-status" id="compose-status" role="status"></p>
   <div class="dlg-actions">
-    <button type="button" class="btn ghost" id="slack-copy">Copy message</button>
-    <button type="button" class="btn ghost" id="slack-close" data-close>Done</button>
-    <button type="button" class="btn primary slack-send" id="slack-send" hidden>Send on Slack</button>
+    <button type="button" class="btn ghost" id="compose-cancel" data-close>Cancel</button>
+    <button type="button" class="btn primary" id="compose-confirm">Send request</button>
   </div>
 </div>
+
 
 <div class="dialog" id="rate-dialog" role="dialog" aria-modal="true" aria-labelledby="rate-title" hidden>
   <form id="rate-form">
