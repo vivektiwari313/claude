@@ -70,7 +70,7 @@ FROM q
 LEFT JOIN monthly n ON n.user_id = q.user_id AND n.month = DATE_ADD(q.m1, INTERVAL 1 MONTH);
 
 -- ------------------- 3. EVENT MAPPING (edit here) --------------------
--- One row per event: user_id, d (AST date), kind, val, club_id.
+-- One row per event: user_id, d (AST date), kind, val, club_id, rcvr_id.
 -- Change a source table / kingdom / column here and everything below follows.
 CREATE TEMP TABLE ev AS
 WITH users AS (SELECT DISTINCT user_id FROM cohort),
@@ -78,7 +78,8 @@ raw AS (
   -- App Launch #Sessions: one row per app_launch event
   -- VERIFY: table/kingdom for app launch in Clubs/LS
   SELECT SPLIT(user_id, ',')[SAFE_OFFSET(0)] AS user_id, server_ts,
-         'app_launch' AS kind, 1.0 AS val, CAST(NULL AS STRING) AS club_id
+         'app_launch' AS kind, 1.0 AS val,
+         CAST(NULL AS STRING) AS club_id, CAST(NULL AS STRING) AS rcvr_id
   FROM `parcheesi-star-7168863.ludo.outside_game_actions`
   WHERE kingdom = 'app_launch'
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
@@ -86,7 +87,7 @@ raw AS (
   UNION DISTINCT
   -- Club Entry #Sessions / Club Entry Days: club_enter events
   SELECT SPLIT(user_id, ',')[SAFE_OFFSET(0)], server_ts,
-         'club_enter', 1.0, SPLIT(family, ',')[SAFE_OFFSET(0)]
+         'club_enter', 1.0, SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
   FROM `parcheesi-star-7168863.ludo.clubs`
   WHERE kingdom = 'club_enter'
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
@@ -94,7 +95,7 @@ raw AS (
   UNION DISTINCT
   -- Club Time Spent: club_leave, phylum = user_id, genus = seconds in club
   SELECT phylum, server_ts,
-         'club_time', SAFE_CAST(genus AS FLOAT64), SPLIT(family, ',')[SAFE_OFFSET(0)]
+         'club_time', SAFE_CAST(genus AS FLOAT64), SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
   FROM `parcheesi-star-7168863.ludo.clubs`
   WHERE kingdom = 'club_leave'
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
@@ -102,7 +103,7 @@ raw AS (
   UNION DISTINCT
   -- Mic Taken #Sessions: take_mic_seat events
   SELECT SPLIT(user_id, ',')[SAFE_OFFSET(0)], server_ts,
-         'mic_take', 1.0, SPLIT(family, ',')[SAFE_OFFSET(0)]
+         'mic_take', 1.0, SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
   FROM `parcheesi-star-7168863.ludo.clubs`
   WHERE kingdom = 'take_mic_seat'
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
@@ -111,28 +112,40 @@ raw AS (
   -- Mic Time Spent: leave_mic_seat, genus = seconds on mic
   -- VERIFY: genus is the mic session duration in seconds
   SELECT SPLIT(user_id, ',')[SAFE_OFFSET(0)], server_ts,
-         'mic_time', SAFE_CAST(genus AS FLOAT64), SPLIT(family, ',')[SAFE_OFFSET(0)]
+         'mic_time', SAFE_CAST(genus AS FLOAT64), SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
   FROM `parcheesi-star-7168863.ludo.clubs`
   WHERE kingdom = 'leave_mic_seat'
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
 
   UNION DISTINCT
-  -- Gifting: send_gift, user_id = sender, family = club_id,club_name,
-  -- species = number of receivers of that gift
-  -- VERIFY: if a stat carries receiver ids (e.g. received_gift with the
-  -- sender id), use it to count DISTINCT receiving users instead
+  -- # Gift Receiving Clubs: send_gift, user_id = sender,
+  -- family = club_id,club_name -> distinct club ids the user gifted in
   SELECT SPLIT(user_id, ',')[SAFE_OFFSET(0)], server_ts,
-         'gift', SAFE_CAST(species AS FLOAT64), SPLIT(family, ',')[SAFE_OFFSET(0)]
+         'gift_sent', 1.0, SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
   FROM `parcheesi-star-7168863.ludo.clubs`
   WHERE kingdom = 'send_gift'
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
+
+  UNION DISTINCT
+  -- # Gift Receiving Users: received_gift, one row per receiver per gift.
+  -- The event's user = receiver, properties.sender_uid = sender.
+  -- Re-keyed to the SENDER so we can count distinct receivers per sender.
+  -- VERIFY: table/column names (ludo.events: name, type, ts, user_id,
+  -- properties) and that received_gift covers the whole period
+  -- (check: SELECT MIN(DATE(ts)) FROM ludo.events WHERE name = 'received_gift')
+  SELECT JSON_EXTRACT_SCALAR(properties, '$.sender_uid'), CAST(ts AS TIMESTAMP),
+         'gift_rcvd', 1.0, JSON_EXTRACT_SCALAR(properties, '$.club_id'),
+         SPLIT(user_id, ',')[SAFE_OFFSET(0)]
+  FROM `parcheesi-star-7168863.ludo.events`
+  WHERE name = 'received_gift' AND type = 'clubs'
+    AND DATE(ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
 )
-SELECT r.user_id, DATE(r.server_ts, 'Asia/Riyadh') AS d, r.kind, r.val, r.club_id
+SELECT r.user_id, DATE(r.server_ts, 'Asia/Riyadh') AS d, r.kind, r.val, r.club_id, r.rcvr_id
 FROM raw r
 JOIN users u ON u.user_id = r.user_id
 UNION ALL
 -- Purchases for Clubs: one row per purchase, val = RP (USD)
-SELECT p.user_id, p.date_ast, 'purchase', CAST(p.royal_points_credited_or_debited AS FLOAT64), NULL
+SELECT p.user_id, p.date_ast, 'purchase', CAST(p.royal_points_credited_or_debited AS FLOAT64), NULL, NULL
 FROM `parcheesi-star-7168863.ludo.D_all_payers_clubs` p
 JOIN users u ON u.user_id = p.user_id
 WHERE p.date_ast >= data_from AND p.date_ast < data_to;
@@ -165,8 +178,8 @@ SELECT
   IFNULL(SUM(IF(e.kind = 'club_time', e.val, 0)), 0) / 3600 AS club_time_hrs,
   COUNTIF(e.kind = 'mic_take') AS mic_sessions,
   IFNULL(SUM(IF(e.kind = 'mic_time', e.val, 0)), 0) / 3600 AS mic_time_hrs,
-  IFNULL(SUM(IF(e.kind = 'gift', e.val, 0)), 0) AS gift_receiving_users,
-  COUNT(DISTINCT IF(e.kind = 'gift', e.club_id, NULL)) AS gift_receiving_clubs,
+  COUNT(DISTINCT IF(e.kind = 'gift_rcvd', e.rcvr_id, NULL)) AS gift_receiving_users,
+  COUNT(DISTINCT IF(e.kind = 'gift_sent', e.club_id, NULL)) AS gift_receiving_clubs,
   COUNTIF(e.kind = 'purchase' AND e.val > 0) AS purchase_txns,
   IFNULL(SUM(IF(e.kind = 'purchase', e.val, 0)), 0) AS total_purchase_usd
 FROM cohort c
