@@ -3,7 +3,8 @@
 -- become Prime the next month. Month on month, Jan-Aug 2026.
 --
 --   Month M row = users whose first ever payment month is M
---                 (no payment from 2021-01-01 up to M-1)
+--                 (never paid at all from 2021-01-01 up to M-1,
+--                  not even a purchase that was later refunded)
 --                 and who spent 1-99 RP in M (Low Payer)
 --   Prime next month = those users with 100+ RP in M+1
 --
@@ -28,9 +29,14 @@ WITH monthly AS (
   GROUP BY 1, 2
   HAVING SUM(royal_points_credited_or_debited) > 0
 ),
+-- First ever paying month since 2021-01-01: the first month with ANY purchase
+-- (RP > 0), even if it was later refunded, so the user was a Non Payer in
+-- every month from 2021-01-01 up to M-1
 first_pay AS (
-  SELECT user_id, MIN(month) AS first_pay_month
-  FROM monthly
+  SELECT user_id, MIN(DATE_TRUNC(date_ast, MONTH)) AS first_pay_month
+  FROM `parcheesi-star-7168863.ludo.D_all_payers_clubs`
+  WHERE date_ast >= DATE '2021-01-01'
+    AND royal_points_credited_or_debited > 0
   GROUP BY 1
 ),
 new_payers AS (
