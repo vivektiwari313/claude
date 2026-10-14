@@ -70,22 +70,24 @@ FROM q
 LEFT JOIN monthly n ON n.user_id = q.user_id AND n.month = DATE_ADD(q.m1, INTERVAL 1 MONTH);
 
 -- ------------------- 3. EVENT MAPPING (edit here) --------------------
+-- Field mapping follows "Data Schema Tracking Plan: LS Clubs"
+-- (Schema for New Arch -> Old Taxonomy Mapping) and "Gameberry Taxonomy".
 -- One row per event: user_id, d (AST date), kind, val, club_id, rcvr_id.
--- Change a source table / kingdom / column here and everything below follows.
 CREATE TEMP TABLE ev AS
 WITH users AS (SELECT DISTINCT user_id FROM cohort),
 raw AS (
-  -- App Launch #Sessions: one row per app_launch event
-  -- VERIFY: table/kingdom for app launch in Clubs/LS
+  -- App Launch #Sessions: ludo.notif_new, kingdom = app_launch
+  -- (client event; user_id column carries user_id, device_id, session_id)
   SELECT SPLIT(user_id, ',')[SAFE_OFFSET(0)] AS user_id, server_ts,
          'app_launch' AS kind, 1.0 AS val,
          CAST(NULL AS STRING) AS club_id, CAST(NULL AS STRING) AS rcvr_id
-  FROM `parcheesi-star-7168863.ludo.outside_game_actions`
+  FROM `parcheesi-star-7168863.ludo.notif_new`
   WHERE kingdom = 'app_launch'
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
 
   UNION DISTINCT
-  -- Club Entry #Sessions / Club Entry Days: club_enter events
+  -- Club Entry #Sessions / Days: club_enter, user = user_id,
+  -- club_id = split(family)[0]
   SELECT SPLIT(user_id, ',')[SAFE_OFFSET(0)], server_ts,
          'club_enter', 1.0, SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
   FROM `parcheesi-star-7168863.ludo.clubs`
@@ -93,15 +95,16 @@ raw AS (
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
 
   UNION DISTINCT
-  -- Club Time Spent: club_leave, phylum = user_id, genus = seconds in club
-  SELECT phylum, server_ts,
+  -- Club Time Spent: club_leave, user = split(phylum)[0],
+  -- user_time_spent_in_club_seconds = genus
+  SELECT SPLIT(phylum, ',')[SAFE_OFFSET(0)], server_ts,
          'club_time', SAFE_CAST(genus AS FLOAT64), SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
   FROM `parcheesi-star-7168863.ludo.clubs`
   WHERE kingdom = 'club_leave'
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
 
   UNION DISTINCT
-  -- Mic Taken #Sessions: take_mic_seat events
+  -- Mic Taken #Sessions: take_mic_seat, user = user_id
   SELECT SPLIT(user_id, ',')[SAFE_OFFSET(0)], server_ts,
          'mic_take', 1.0, SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
   FROM `parcheesi-star-7168863.ludo.clubs`
@@ -109,17 +112,18 @@ raw AS (
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
 
   UNION DISTINCT
-  -- Mic Time Spent: leave_mic_seat, genus = seconds on mic
-  -- VERIFY: genus is the mic session duration in seconds
-  SELECT SPLIT(user_id, ',')[SAFE_OFFSET(0)], server_ts,
-         'mic_time', SAFE_CAST(genus AS FLOAT64), SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
+  -- Mic Time Spent: leave_mic_seat, user = split(phylum)[0]
+  -- (user_id is the remover), user_time_spent_on_mic_seconds = split(phylum)[1]
+  SELECT SPLIT(phylum, ',')[SAFE_OFFSET(0)], server_ts,
+         'mic_time', SAFE_CAST(SPLIT(phylum, ',')[SAFE_OFFSET(1)] AS FLOAT64),
+         SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
   FROM `parcheesi-star-7168863.ludo.clubs`
   WHERE kingdom = 'leave_mic_seat'
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
 
   UNION DISTINCT
-  -- # Gift Receiving Clubs: send_gift, user_id = sender,
-  -- family = club_id,club_name -> distinct club ids the user gifted in
+  -- # Gift Receiving Clubs: send_gift, sender = user_id,
+  -- club_id = split(family)[0]
   SELECT SPLIT(user_id, ',')[SAFE_OFFSET(0)], server_ts,
          'gift_sent', 1.0, SPLIT(family, ',')[SAFE_OFFSET(0)], NULL
   FROM `parcheesi-star-7168863.ludo.clubs`
@@ -127,24 +131,21 @@ raw AS (
     AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
 
   UNION DISTINCT
-  -- # Gift Receiving Users: received_gift, one row per receiver per gift.
-  -- The event's user = receiver, properties.sender_uid = sender.
-  -- Re-keyed to the SENDER so we can count distinct receivers per sender.
-  -- VERIFY: table/column names (ludo.events: name, type, ts, user_id,
-  -- properties) and that received_gift covers the whole period
-  -- (check: SELECT MIN(DATE(ts)) FROM ludo.events WHERE name = 'received_gift')
-  SELECT JSON_EXTRACT_SCALAR(properties, '$.sender_uid'), CAST(ts AS TIMESTAMP),
-         'gift_rcvd', 1.0, JSON_EXTRACT_SCALAR(properties, '$.club_id'),
+  -- # Gift Receiving Users: received_gift, receiver = user_id,
+  -- sender = split(phylum)[0]. Re-keyed to the SENDER so we can count
+  -- distinct receivers of the cohort user's gifts.
+  SELECT SPLIT(phylum, ',')[SAFE_OFFSET(0)], server_ts,
+         'gift_rcvd', 1.0, SPLIT(family, ',')[SAFE_OFFSET(0)],
          SPLIT(user_id, ',')[SAFE_OFFSET(0)]
-  FROM `parcheesi-star-7168863.ludo.events`
-  WHERE name = 'received_gift' AND type = 'clubs'
-    AND DATE(ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
+  FROM `parcheesi-star-7168863.ludo.clubs`
+  WHERE kingdom = 'received_gift'
+    AND DATE(server_ts) BETWEEN DATE_SUB(data_from, INTERVAL 1 DAY) AND data_to
 )
 SELECT r.user_id, DATE(r.server_ts, 'Asia/Riyadh') AS d, r.kind, r.val, r.club_id, r.rcvr_id
 FROM raw r
 JOIN users u ON u.user_id = r.user_id
 UNION ALL
--- Purchases for Clubs: one row per purchase, val = RP (USD)
+-- # Purchase txns / Total Purchase: D_all_payers_clubs, val = RP (USD)
 SELECT p.user_id, p.date_ast, 'purchase', CAST(p.royal_points_credited_or_debited AS FLOAT64), NULL, NULL
 FROM `parcheesi-star-7168863.ludo.D_all_payers_clubs` p
 JOIN users u ON u.user_id = p.user_id
@@ -205,3 +206,35 @@ SELECT
 FROM user_period
 GROUP BY segment, mo, wk
 ORDER BY segment, mo, IF(wk = 0, 9, wk);
+
+-- ------------- 5b. Same layout with averages (for comparison) --------
+SELECT
+  segment,
+  IF(wk = 0, FORMAT('M%d Total', mo), FORMAT('M%d W%d', mo, wk)) AS period,
+  COUNT(*) AS users,
+  ROUND(AVG(app_launch_sessions), 2) AS avg_app_launch_sessions,
+  ROUND(AVG(club_entry_sessions), 2) AS avg_club_entry_sessions,
+  ROUND(AVG(club_entry_days), 2) AS avg_club_entry_days,
+  ROUND(AVG(club_time_hrs), 2) AS avg_club_time_hrs,
+  ROUND(AVG(mic_sessions), 2) AS avg_mic_sessions,
+  ROUND(AVG(mic_time_hrs), 2) AS avg_mic_time_hrs,
+  ROUND(AVG(gift_receiving_users), 2) AS avg_gift_receiving_users,
+  ROUND(AVG(gift_receiving_clubs), 2) AS avg_gift_receiving_clubs,
+  ROUND(AVG(purchase_txns), 2) AS avg_purchase_txns,
+  ROUND(AVG(total_purchase_usd), 2) AS avg_total_purchase_usd
+FROM user_period
+GROUP BY segment, mo, wk
+ORDER BY segment, mo, IF(wk = 0, 9, wk);
+
+-- ------------- 6. Check: coverage of each source (optional) ----------
+-- Share of cohort users with at least one event of each kind, by month.
+-- If a kind shows ~0% the source/field mapping above needs a look.
+SELECT
+  FORMAT_DATE('%b %Y', DATE_TRUNC(e.d, MONTH)) AS month,
+  e.kind,
+  COUNT(*) AS events,
+  COUNT(DISTINCT e.user_id) AS cohort_users_with_event,
+  ROUND(100 * COUNT(DISTINCT e.user_id) / (SELECT COUNT(*) FROM cohort), 1) AS pct_of_cohort
+FROM ev e
+GROUP BY DATE_TRUNC(e.d, MONTH), e.kind
+ORDER BY DATE_TRUNC(e.d, MONTH), e.kind;
