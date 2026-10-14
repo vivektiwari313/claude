@@ -8,6 +8,7 @@
 --   first_time_payers          first ever payment in Clubs is in M
 --                              (no purchase at all from 2021-01-01 to M-1)
 --   low_payer_last_month       spent $1-$99 in M-1
+--   low_payer_50plus_last_month  spent $50-$99 in M-1 (subset of the above)
 --   non_payer_last_month       no spend in M-1 (includes first time payers)
 --     of which returning       paid at some point before M-1, not in M-1
 --   first_club_entry_this_month  first ever club entry (since 2021-01-01) is in M
@@ -77,6 +78,7 @@ WITH flags AS (
     b.user_id,
     (uf.first_pay_month = b.month) AS is_first_time_payer,
     (prev.user_id IS NOT NULL AND prev.rp < 100) AS is_lp_last_month,
+    (prev.rp >= 50 AND prev.rp < 100) AS is_lp50_last_month,
     (prev.user_id IS NULL) AS is_np_last_month,
     (fe.first_entry_month = b.month) AS is_first_club_entry,
     (nx.rp >= 100) AS is_prime_next_month
@@ -91,6 +93,7 @@ SELECT
   COUNT(*) AS lp_50plus_never_prime,
   COUNTIF(is_first_time_payer) AS first_time_payers,
   COUNTIF(is_lp_last_month) AS low_payer_last_month,
+  COUNTIF(is_lp50_last_month) AS low_payer_50plus_last_month,
   COUNTIF(is_np_last_month) AS non_payer_last_month,
   COUNTIF(is_np_last_month AND NOT IFNULL(is_first_time_payer, FALSE)) AS non_payer_last_month_returning,
   COUNTIF(is_first_club_entry) AS first_club_entry_this_month,
@@ -99,6 +102,7 @@ SELECT
   -- next-month Prime by group (Jan-Aug)
   IF(month <= conv_last_month, COUNTIF(is_prime_next_month AND is_first_time_payer), NULL) AS prime_next_month_from_first_time,
   IF(month <= conv_last_month, COUNTIF(is_prime_next_month AND is_lp_last_month), NULL) AS prime_next_month_from_lp_last_month,
+  IF(month <= conv_last_month, COUNTIF(is_prime_next_month AND is_lp50_last_month), NULL) AS prime_next_month_from_lp50_last_month,
   IF(month <= conv_last_month, COUNTIF(is_prime_next_month AND is_np_last_month), NULL) AS prime_next_month_from_np_last_month,
   IF(month <= conv_last_month, COUNTIF(is_prime_next_month AND is_first_club_entry), NULL) AS prime_next_month_from_first_club_entry
 FROM flags
