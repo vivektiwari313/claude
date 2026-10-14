@@ -5,7 +5,10 @@
 -- Cohort (Month 1 = M1, any month Jan-Aug 2026):
 --   * spent $50-$99 (RP) in M1
 --   * never Prime ($100+) in any month from 2021-01-01 up to M1
---   * each user is counted once, in their first qualifying month
+--   * every qualifying month from Jan to Aug 2026 counts: a user who
+--     qualifies in two months appears in both monthly cohorts
+--   * results are pooled across all Month 1s (Jan-Aug 2026), plus a
+--     month-by-month breakdown
 -- Segments, by what the user did in Month 2 (M2 = M1 + 1):
 --   1. Non Payer in M2      (no RP)
 --   2. Low Payer in M2      (1-99 RP)
@@ -50,13 +53,12 @@ WITH fp AS (
   GROUP BY 1
 ),
 q AS (
-  SELECT m.user_id, MIN(m.month) AS m1
+  SELECT m.user_id, m.month AS m1
   FROM monthly m
   JOIN fp ON fp.user_id = m.user_id
   WHERE m.month BETWEEN m1_from AND m1_to
     AND m.rp >= min_rp AND m.rp < 100
     AND (fp.first_prime_month IS NULL OR fp.first_prime_month > m.month)
-  GROUP BY 1
 )
 SELECT
   q.user_id,
@@ -161,6 +163,7 @@ ev_p AS (
   FROM (
     SELECT
       e.*,
+      c.m1,
       DATE_DIFF(DATE_TRUNC(e.d, MONTH), c.m1, MONTH) + 1 AS mo_no,
       LEAST(DIV(EXTRACT(DAY FROM e.d) - 1, 7) + 1, 4) AS wk
     FROM ev e
@@ -170,6 +173,7 @@ ev_p AS (
 )
 SELECT
   c.user_id,
+  c.m1,
   c.segment,
   g.mo,
   g.wk,
@@ -185,14 +189,15 @@ SELECT
   IFNULL(SUM(IF(e.kind = 'purchase', e.val, 0)), 0) AS total_purchase_usd
 FROM cohort c
 CROSS JOIN grid g
-LEFT JOIN ev_p e ON e.user_id = c.user_id AND e.mo_no = g.mo AND e.wk2 = g.wk
-GROUP BY 1, 2, 3, 4;
+LEFT JOIN ev_p e ON e.user_id = c.user_id AND e.m1 = c.m1 AND e.mo_no = g.mo AND e.wk2 = g.wk
+GROUP BY 1, 2, 3, 4, 5;
 
--- ------------------- 5. Output: medians per segment ------------------
+-- ------- 5. Output: medians per segment, pooled Jan-Aug 2026 ---------
 SELECT
   segment,
   IF(wk = 0, FORMAT('M%d Total', mo), FORMAT('M%d W%d', mo, wk)) AS period,
-  COUNT(*) AS users,
+  COUNT(*) AS user_months,
+  COUNT(DISTINCT user_id) AS distinct_users,
   APPROX_QUANTILES(app_launch_sessions, 2)[OFFSET(1)] AS median_app_launch_sessions,
   APPROX_QUANTILES(club_entry_sessions, 2)[OFFSET(1)] AS median_club_entry_sessions,
   APPROX_QUANTILES(club_entry_days, 2)[OFFSET(1)] AS median_club_entry_days,
@@ -211,7 +216,7 @@ ORDER BY segment, mo, IF(wk = 0, 9, wk);
 SELECT
   segment,
   IF(wk = 0, FORMAT('M%d Total', mo), FORMAT('M%d W%d', mo, wk)) AS period,
-  COUNT(*) AS users,
+  COUNT(*) AS user_months,
   ROUND(AVG(app_launch_sessions), 2) AS avg_app_launch_sessions,
   ROUND(AVG(club_entry_sessions), 2) AS avg_club_entry_sessions,
   ROUND(AVG(club_entry_days), 2) AS avg_club_entry_days,
@@ -226,6 +231,26 @@ FROM user_period
 GROUP BY segment, mo, wk
 ORDER BY segment, mo, IF(wk = 0, 9, wk);
 
+-- ---------- 5c. Medians by Month 1 (Jan ... Aug 2026 separately) -------
+SELECT
+  FORMAT_DATE('%b %Y', m1) AS month_1,
+  segment,
+  IF(wk = 0, FORMAT('M%d Total', mo), FORMAT('M%d W%d', mo, wk)) AS period,
+  COUNT(*) AS users,
+  APPROX_QUANTILES(app_launch_sessions, 2)[OFFSET(1)] AS median_app_launch_sessions,
+  APPROX_QUANTILES(club_entry_sessions, 2)[OFFSET(1)] AS median_club_entry_sessions,
+  APPROX_QUANTILES(club_entry_days, 2)[OFFSET(1)] AS median_club_entry_days,
+  ROUND(APPROX_QUANTILES(club_time_hrs, 2)[OFFSET(1)], 2) AS median_club_time_hrs,
+  APPROX_QUANTILES(mic_sessions, 2)[OFFSET(1)] AS median_mic_sessions,
+  ROUND(APPROX_QUANTILES(mic_time_hrs, 2)[OFFSET(1)], 2) AS median_mic_time_hrs,
+  APPROX_QUANTILES(gift_receiving_users, 2)[OFFSET(1)] AS median_gift_receiving_users,
+  APPROX_QUANTILES(gift_receiving_clubs, 2)[OFFSET(1)] AS median_gift_receiving_clubs,
+  APPROX_QUANTILES(purchase_txns, 2)[OFFSET(1)] AS median_purchase_txns,
+  ROUND(APPROX_QUANTILES(total_purchase_usd, 2)[OFFSET(1)], 2) AS median_total_purchase_usd
+FROM user_period
+GROUP BY m1, segment, mo, wk
+ORDER BY m1, segment, mo, IF(wk = 0, 9, wk);
+
 -- ------------- 6. Check: coverage of each source (optional) ----------
 -- Share of cohort users with at least one event of each kind, by month.
 -- If a kind shows ~0% the source/field mapping above needs a look.
@@ -234,7 +259,7 @@ SELECT
   e.kind,
   COUNT(*) AS events,
   COUNT(DISTINCT e.user_id) AS cohort_users_with_event,
-  ROUND(100 * COUNT(DISTINCT e.user_id) / (SELECT COUNT(*) FROM cohort), 1) AS pct_of_cohort
+  ROUND(100 * COUNT(DISTINCT e.user_id) / (SELECT COUNT(DISTINCT user_id) FROM cohort), 1) AS pct_of_cohort_users
 FROM ev e
 GROUP BY DATE_TRUNC(e.d, MONTH), e.kind
 ORDER BY DATE_TRUNC(e.d, MONTH), e.kind;
