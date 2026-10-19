@@ -16,6 +16,10 @@
 -- Periods: M1 W1..W4, M1 Total, M2 W1..W4, M2 Total
 --   Weeks are calendar weeks of the month: W1 = days 1-7, W2 = 8-14,
 --   W3 = 15-21, W4 = 22-end of month. Dates are in AST (Asia/Riyadh).
+--   W4 has 7-10 days, so every W4 metric is normalised to 7 days
+--   (value x 7 / days in W4) to compare with W1-W3. Month totals are not
+--   normalised. For distinct counts (club entry days, gift receiving
+--   users/clubs) this scaling is an approximation.
 -- Output: one row per segment x period, MEDIAN per user of each metric
 --   (users with no activity in a period count as 0).
 --
@@ -170,7 +174,8 @@ ev_p AS (
     JOIN cohort c ON c.user_id = e.user_id
   ) e, UNNEST([e.wk, 0]) AS wk2
   WHERE e.mo_no IN (1, 2)
-)
+),
+raw AS (
 SELECT
   c.user_id,
   c.m1,
@@ -190,7 +195,30 @@ SELECT
 FROM cohort c
 CROSS JOIN grid g
 LEFT JOIN ev_p e ON e.user_id = c.user_id AND e.m1 = c.m1 AND e.mo_no = g.mo AND e.wk2 = g.wk
-GROUP BY 1, 2, 3, 4, 5;
+GROUP BY 1, 2, 3, 4, 5
+),
+scaled AS (
+  -- W4 = day 22 to month end (7-10 days) -> scale to a 7-day week
+  SELECT
+    r.*,
+    IF(r.wk = 4,
+       7 / (EXTRACT(DAY FROM LAST_DAY(DATE_ADD(r.m1, INTERVAL r.mo - 1 MONTH))) - 21),
+       1) AS f
+  FROM raw r
+)
+SELECT
+  user_id, m1, segment, mo, wk,
+  ROUND(app_launch_sessions  * f, 2) AS app_launch_sessions,
+  ROUND(club_entry_sessions  * f, 2) AS club_entry_sessions,
+  ROUND(club_entry_days      * f, 2) AS club_entry_days,
+  ROUND(club_time_hrs        * f, 2) AS club_time_hrs,
+  ROUND(mic_sessions         * f, 2) AS mic_sessions,
+  ROUND(mic_time_hrs         * f, 2) AS mic_time_hrs,
+  ROUND(gift_receiving_users * f, 2) AS gift_receiving_users,
+  ROUND(gift_receiving_clubs * f, 2) AS gift_receiving_clubs,
+  ROUND(purchase_txns        * f, 2) AS purchase_txns,
+  ROUND(total_purchase_usd   * f, 2) AS total_purchase_usd
+FROM scaled;
 
 -- ------- 5. Output: medians per segment, pooled Jan-Aug 2026 ---------
 SELECT
