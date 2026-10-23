@@ -1,6 +1,6 @@
 -- =====================================================================
--- Clubs: September 2026 Royals - how many clubs each is a MEMBER of,
--- bucketed (membership held at the end of September 2026)
+-- Clubs: clubs bucketed by how many September 2026 Royals are MEMBERS
+-- of them (membership held at the end of September 2026)
 --
 -- Royals of September: 1000+ royal points in Sep 2026 (AST), from
 --   ludo.D_all_payers_clubs (the Clubs payer ledger). RP = SUM of
@@ -12,7 +12,7 @@
 --   given as a flag, because RP includes bonus and streak points.
 -- Membership: rebuilt from every club_member_join / club_member_leave up to
 --   the snapshot time. A user is a member of a club if their latest event
---   for that club is a join.
+--   for that club is a join. Only clubs with at least 1 Royal member appear.
 --   Old architecture (default): ludo.clubs + yearly archives,
 --     join:  member = user_id,               club = split(family)[0]
 --     leave: member = split(phylum)[0]       (user_id is removed_by), club = split(family)[0]
@@ -20,7 +20,8 @@
 --   old table stops receiving events after the migration; duplicates do
 --   not matter because only each user-club's latest event is used.
 --
--- Results: A. Bucketed table   B. Summary stats   C. Check: events per source
+-- Results: A. # clubs by # Royal members (1, 2, 3, 4-5, 6-8, 9-12, 13-20, 21+)
+--          B. Summary stats   C. Check: events per source
 -- Dry-run first: the membership scan covers all history since 2022.
 -- =====================================================================
 
@@ -94,8 +95,8 @@ FROM ev
 JOIN royal_ids r ON r.user_id = ev.member_id
 WHERE ev.club_id IS NOT NULL AND ev.club_id != '';
 
--- ---------------- 3. Clubs each Royal is a member of ----------------
-CREATE TEMP TABLE royal_clubs AS
+-- ---------------- 3. Royals who are members of each club -----------
+CREATE TEMP TABLE club_royals AS
 WITH latest AS (
   SELECT member_id, club_id, action
   FROM member_events
@@ -105,54 +106,55 @@ WITH latest AS (
   ) = 1
 )
 SELECT
-  r.user_id,
-  r.sep_rp,
-  r.sep_net_usd,
-  COUNT(DISTINCT IF(l.action = 'club_member_join', l.club_id, NULL)) AS clubs_member_of
-FROM royals r
-LEFT JOIN latest l ON l.member_id = r.user_id
-GROUP BY 1, 2, 3;
+  l.club_id,
+  COUNT(DISTINCT l.member_id) AS royal_members,
+  COUNT(DISTINCT IF(r.sep_net_usd >= 1000, l.member_id, NULL)) AS royal_members_1000_usd
+FROM latest l
+JOIN royals r ON r.user_id = l.member_id
+WHERE l.action = 'club_member_join'
+GROUP BY 1;
 
--- ---------------- A. Bucketed table ---------------------------------
+-- ---------------- A. Bucketed table: # clubs by # Royal members -----
 WITH b AS (
   SELECT
     CASE
-      WHEN clubs_member_of = 0 THEN 0 WHEN clubs_member_of = 1 THEN 1
-      WHEN clubs_member_of = 2 THEN 2 WHEN clubs_member_of = 3 THEN 3
-      WHEN clubs_member_of = 4 THEN 4 WHEN clubs_member_of = 5 THEN 5
-      WHEN clubs_member_of <= 10 THEN 6 WHEN clubs_member_of <= 20 THEN 7
-      WHEN clubs_member_of <= 50 THEN 8 ELSE 9
+      WHEN royal_members = 1 THEN 1 WHEN royal_members = 2 THEN 2
+      WHEN royal_members = 3 THEN 3 WHEN royal_members <= 5 THEN 4
+      WHEN royal_members <= 8 THEN 5 WHEN royal_members <= 12 THEN 6
+      WHEN royal_members <= 20 THEN 7 ELSE 8
     END AS sort_key,
     CASE
-      WHEN clubs_member_of <= 5 THEN CAST(clubs_member_of AS STRING)
-      WHEN clubs_member_of <= 10 THEN '6-10'
-      WHEN clubs_member_of <= 20 THEN '11-20'
-      WHEN clubs_member_of <= 50 THEN '21-50'
-      ELSE '51+'
-    END AS clubs_member_of_bucket,
-    user_id,
-    sep_net_usd
-  FROM royal_clubs
+      WHEN royal_members <= 3 THEN CAST(royal_members AS STRING)
+      WHEN royal_members <= 5 THEN '4-5'
+      WHEN royal_members <= 8 THEN '6-8'
+      WHEN royal_members <= 12 THEN '9-12'
+      WHEN royal_members <= 20 THEN '13-20'
+      ELSE '21+'
+    END AS royal_members_bucket,
+    royal_members
+  FROM club_royals
 )
 SELECT
-  clubs_member_of_bucket,
-  COUNT(*) AS royals,
-  ROUND(100 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct_of_royals,
-  ROUND(100 * SUM(COUNT(*)) OVER (ORDER BY sort_key) / SUM(COUNT(*)) OVER (), 1) AS cumulative_pct,
-  COUNTIF(sep_net_usd >= 1000) AS royals_with_1000_usd_spend
+  royal_members_bucket,
+  COUNT(*) AS clubs,
+  ROUND(100 * COUNT(*) / SUM(COUNT(*)) OVER (), 1) AS pct_of_clubs,
+  ROUND(100 * SUM(COUNT(*)) OVER (ORDER BY sort_key) / SUM(COUNT(*)) OVER (), 1) AS cumulative_pct_clubs,
+  SUM(royal_members) AS royal_memberships,
+  ROUND(100 * SUM(royal_members) / SUM(SUM(royal_members)) OVER (), 1) AS pct_of_royal_memberships
 FROM b
-GROUP BY sort_key, clubs_member_of_bucket
+GROUP BY sort_key, royal_members_bucket
 ORDER BY sort_key;
 
 -- ---------------- B. Summary stats ----------------------------------
 SELECT
-  COUNT(*) AS september_royals,
-  ROUND(AVG(clubs_member_of), 2) AS avg_clubs_member_of,
-  APPROX_QUANTILES(clubs_member_of, 2)[OFFSET(1)] AS median_clubs_member_of,
-  MAX(clubs_member_of) AS max_clubs_member_of,
-  COUNTIF(clubs_member_of = 0) AS royals_in_no_club,
-  COUNTIF(sep_net_usd >= 1000) AS royals_with_1000_usd_spend
-FROM royal_clubs;
+  (SELECT COUNT(*) FROM royals) AS september_royals,
+  (SELECT COUNT(DISTINCT member_id) FROM member_events) AS royals_with_any_membership_event,
+  COUNT(*) AS clubs_with_1plus_royal_member,
+  SUM(royal_members) AS royal_memberships,
+  ROUND(AVG(royal_members), 2) AS avg_royals_per_club,
+  APPROX_QUANTILES(royal_members, 2)[OFFSET(1)] AS median_royals_per_club,
+  MAX(royal_members) AS max_royals_in_one_club
+FROM club_royals;
 
 -- ---------------- C. Check: membership events per source / year -----
 -- If 'old' stops in 2026 (migration), the 'new' rows carry the recent months.
